@@ -6,7 +6,7 @@ separate 1:1 document keyed by `user_id`.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 
 from beanie import Document
@@ -15,7 +15,7 @@ from pymongo import IndexModel
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class Role(str, Enum):

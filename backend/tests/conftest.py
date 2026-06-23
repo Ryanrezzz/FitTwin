@@ -10,7 +10,7 @@ import os
 os.environ.setdefault("LLM_PROVIDER", "fake")
 os.environ["DB_ENABLED"] = "false"
 
-from datetime import datetime, timezone  # noqa: E402
+from datetime import UTC, datetime  # noqa: E402
 from enum import Enum  # noqa: E402
 from typing import Any  # noqa: E402
 
@@ -46,7 +46,7 @@ class _FakeUser:
         self.password_hash = password_hash
         self.role = role
         self.is_active = True
-        self.created_at = datetime.now(timezone.utc)
+        self.created_at = datetime.now(UTC)
 
 
 class _FakeProfile:
