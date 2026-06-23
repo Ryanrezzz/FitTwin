@@ -31,35 +31,65 @@ def test_generate_plan_without_profile_is_400(client, auth_headers):
     assert "onboarding" in r.json()["error"]["message"].lower()
 
 
-def test_generate_plan_runs_nutrition_workout_safety(client, onboarded):
+def test_generate_plan_persists_v1(client, onboarded):
     r = client.post("/api/v1/plans/generate", headers=onboarded)
     assert r.status_code == 200
-    final = r.json()["final"]
+    body = r.json()
+    final = body["final"]
     assert final["intent"] == "generate_plan"
     assert final["agents_used"] == ["nutrition", "workout", "safety"]
     assert final["nutrition"]["calories"] > 0
-    assert final["workout"]["split"]
+    # the complete plan was persisted as version 1
+    assert body["plan_id"] and body["plan_version"] == 1
+
+    active = client.get("/api/v1/plans/active", headers=onboarded)
+    assert active.status_code == 200
+    assert active.json()["version"] == 1 and active.json()["active"] is True
+    assert active.json()["calorie_target"] == final["nutrition"]["calories"]
 
 
-def test_chat_plateau_triggers_progress_then_adapt(client, onboarded):
+def test_second_generate_bumps_version_and_flips_active(client, onboarded):
+    first = client.post("/api/v1/plans/generate", headers=onboarded).json()
+    second = client.post("/api/v1/plans/generate", headers=onboarded).json()
+    assert second["plan_version"] == 2
+
+    active = client.get("/api/v1/plans/active", headers=onboarded).json()
+    assert active["version"] == 2
+
+    # the old version is retained but no longer active
+    old = client.get(f"/api/v1/plans/{first['plan_id']}", headers=onboarded).json()
+    assert old["version"] == 1 and old["active"] is False
+
+
+def test_get_active_before_generate_is_404(client, onboarded):
+    assert client.get("/api/v1/plans/active", headers=onboarded).status_code == 404
+
+
+def test_get_unknown_plan_is_404(client, onboarded):
+    assert client.get("/api/v1/plans/deadbeef", headers=onboarded).status_code == 404
+
+
+def test_chat_plateau_adapts_against_stored_plan(client, onboarded):
+    # establish an active plan, then log adherent days at its targets
+    gen = client.post("/api/v1/plans/generate", headers=onboarded).json()["final"]["nutrition"]
+    ct, pp = gen["calories"], gen["macros"]["protein_g"]
     history = {
         "weight_series": [{"weight_kg": 82.0} for _ in range(14)],
-        "logs": [{"calories": 2000, "protein_g": 164, "workout_done": True} for _ in range(14)],
+        "logs": [{"calories": ct, "protein_g": pp, "workout_done": True} for _ in range(14)],
     }
     r = client.post(
         "/api/v1/chat",
         headers=onboarded,
-        json={
-            "message": "I haven't lost weight this week",
-            "history": history,
-            "active_plan": PLAN,
-        },
+        json={"message": "I haven't lost weight this week", "history": history},
     )
     assert r.status_code == 200
-    final = r.json()["final"]
+    body = r.json()
+    final = body["final"]
     assert final["intent"] == "progress_concern"
     assert final["progress"]["plateau"] is True
     assert {"progress", "nutrition", "workout", "safety"} <= set(final["agents_used"])
+    # the adapted plan was persisted as a new version
+    assert body["plan_version"] == 2
 
 
 def test_chat_rejects_unknown_field(client, onboarded):
