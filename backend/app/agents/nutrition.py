@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from app.agents import templates
 from app.agents.prompts import NUTRITION_SYSTEM
-from app.agents.schemas import Macros as _unused  # noqa: F401  (keep schemas import path warm)
 from app.agents.schemas import MacrosOut, Meal, NutritionResult
 from app.agents.state import trace
 from app.agents.tools import nutrition_math as nm
