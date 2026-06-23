@@ -32,22 +32,46 @@ PROFILE = {
 CREDS = {"email": "alex@example.com", "password": "supersecret1"}
 
 
+# Beanie Documents can't be instantiated without init_beanie, so the fakes use
+# lightweight stand-ins that duck-type only what the app code touches.
+def _agent_shape(data: dict[str, Any]) -> dict[str, Any]:
+    """ProfileIn.model_dump() (enum members) -> the agent-profile dict (str values)."""
+    return {k: (v.value if isinstance(v, Enum) else v) for k, v in data.items()}
+
+
+class _FakeUser:
+    def __init__(self, email: str, password_hash: str, role: Role) -> None:
+        self.id = PydanticObjectId()
+        self.email = email
+        self.password_hash = password_hash
+        self.role = role
+        self.is_active = True
+        self.created_at = datetime.now(timezone.utc)
+
+
+class _FakeProfile:
+    def __init__(self, data: dict[str, Any]) -> None:
+        self._data = data
+
+    def to_agent_profile(self) -> dict[str, Any]:
+        return _agent_shape(self._data)
+
+
 class InMemoryUserRepo:
-    """Satisfies the UserRepo Protocol; stores Beanie User objects in dicts."""
+    """Satisfies the UserRepo Protocol with in-memory dicts."""
 
     def __init__(self) -> None:
-        self._by_id: dict[str, User] = {}
-        self._by_email: dict[str, User] = {}
+        self._by_id: dict[str, _FakeUser] = {}
+        self._by_email: dict[str, _FakeUser] = {}
 
-    async def get_by_id(self, user_id: str) -> User | None:
+    async def get_by_id(self, user_id: str):
         return self._by_id.get(user_id)
 
-    async def get_by_email(self, email: str) -> User | None:
+    async def get_by_email(self, email: str):
         return self._by_email.get(email)
 
-    async def create(self, *, email: str, password_hash: str, role: Role = Role.user) -> User:
-        user = User(email=email, password_hash=password_hash, role=role)
-        user.id = PydanticObjectId()
+    async def create(self, *, email: str, password_hash: str, role: Role = Role.user):
+        user = _FakeUser(email, password_hash, role)
         self._by_id[str(user.id)] = user
         self._by_email[email] = user
         return user
@@ -55,21 +79,15 @@ class InMemoryUserRepo:
 
 class InMemoryProfileRepo:
     def __init__(self) -> None:
-        self._by_user: dict[str, Profile] = {}
+        self._by_user: dict[str, _FakeProfile] = {}
 
-    async def get_by_user(self, user_id: str) -> Profile | None:
+    async def get_by_user(self, user_id: str):
         return self._by_user.get(user_id)
 
-    async def upsert(self, user_id: str, data: dict[str, Any]) -> Profile:
-        existing = self._by_user.get(user_id)
-        if existing is None:
-            profile = Profile(user_id=PydanticObjectId(user_id), **data)
-            profile.id = PydanticObjectId()
-            self._by_user[user_id] = profile
-            return profile
-        for key, value in data.items():
-            setattr(existing, key, value)
-        return existing
+    async def upsert(self, user_id: str, data: dict[str, Any]):
+        profile = _FakeProfile(data)
+        self._by_user[user_id] = profile
+        return profile
 
 
 @pytest.fixture()
