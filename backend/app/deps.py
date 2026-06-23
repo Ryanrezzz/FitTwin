@@ -59,9 +59,16 @@ def get_profile_repo() -> ProfileRepo:
     return BeanieProfileRepo()
 
 
+def get_plan_repo() -> PlanRepo:
+    return BeaniePlanRepo()
+
+
 # ── services ──────────────────────────────────────────────────────────────────
-def get_coach_service(graph=Depends(get_graph)) -> CoachService:
-    return CoachService(graph)
+def get_coach_service(
+    graph=Depends(get_graph),
+    plans: PlanRepo = Depends(get_plan_repo),
+) -> CoachService:
+    return CoachService(graph, plans)
 
 
 def get_auth_service(users: UserRepo = Depends(get_user_repo)) -> AuthService:
@@ -106,3 +113,14 @@ async def get_current_profile(
             detail="Complete onboarding first (PUT /api/v1/profile).",
         )
     return profile.to_agent_profile()
+
+
+async def get_active_plan(
+    user: User = Depends(get_current_user),
+    plans: PlanRepo = Depends(get_plan_repo),
+) -> dict[str, Any] | None:
+    """The current user's active plan targets for adherence/adaptation, or None."""
+    plan = await plans.get_active(str(user.id))
+    if plan is None:
+        return None
+    return {"calorie_target": plan.calorie_target, "macros": plan.macros}
