@@ -6,7 +6,7 @@ here so the router rejects bad input *before* it reaches the agent graph.
 """
 from __future__ import annotations
 
-from datetime import date
+from datetime import date as DateType
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -38,7 +38,7 @@ class WeightEntry(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    date: date | None = None
+    date: DateType | None = None
     weight_kg: float = Field(gt=20, lt=400)
 
 
