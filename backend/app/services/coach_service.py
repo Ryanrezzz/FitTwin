@@ -50,25 +50,25 @@ class CoachService:
         )
         return {"final": result["final"], "steps": result["steps"]}
 
-    def generate_plan(self, req: GeneratePlanRequest, *, user_id: str) -> dict[str, Any]:
-        return self._run(
-            profile=req.profile.model_dump(mode="json"),
-            trigger="generate_plan",
-            user_id=user_id,
-        )
+    def generate_plan(self, *, profile: dict[str, Any], user_id: str) -> dict[str, Any]:
+        return self._run(profile=profile, trigger="generate_plan", user_id=user_id)
 
-    def weekly_review(self, req: WeeklyReviewRequest, *, user_id: str) -> dict[str, Any]:
+    def weekly_review(
+        self, req: WeeklyReviewRequest, *, profile: dict[str, Any], user_id: str
+    ) -> dict[str, Any]:
         return self._run(
-            profile=req.profile.model_dump(mode="json"),
+            profile=profile,
             history=_history_to_runner(req.history),
             active_plan=_plan_to_runner(req.active_plan),
             trigger="weekly_review",
             user_id=user_id,
         )
 
-    def chat(self, req: ChatRequest, *, user_id: str) -> dict[str, Any]:
+    def chat(
+        self, req: ChatRequest, *, profile: dict[str, Any], user_id: str
+    ) -> dict[str, Any]:
         return self._run(
-            profile=req.profile.model_dump(mode="json"),
+            profile=profile,
             message=req.message,
             history=_history_to_runner(req.history),
             active_plan=_plan_to_runner(req.active_plan),
