@@ -143,8 +143,12 @@ LLM with an offline **fake** provider, safety gate) is built and tested, and now
 Coach routes are authenticated and read the user's stored profile. DB init degrades gracefully when Mongo is down;
 tests inject in-memory repos so the whole stack runs offline.
 
-🟡 **Next:** persist versioned plans + daily logs, SSE streaming on `/chat` and the scheduled weekly-review worker
-(Sprint 4), then the React frontend (Sprint 5).
+🟢 **Versioned plans (Sprint 2 persistence)** — a complete coach run is persisted as a new `Plan` version
+(prior versions retained, exactly one active per user); the coach loads the active plan from the DB for
+adherence/adaptation, and `GET /plans/active` + `GET /plans/{id}` read them back (object-level user scoping).
+
+🟡 **Next:** daily logs + progress entries + dashboard data (Sprint 3), then SSE streaming on `/chat` and the
+scheduled weekly-review worker (Sprint 4), then the React frontend (Sprint 5).
 
 ## License
 
