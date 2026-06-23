@@ -10,14 +10,15 @@ from __future__ import annotations
 import logging
 
 from beanie import init_beanie
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import AsyncMongoClient
 
 from app.config import settings
 from app.models import ALL_MODELS
 
 log = logging.getLogger(__name__)
 
-_client: AsyncIOMotorClient | None = None
+# Beanie 2.x uses PyMongo's native async driver (AsyncMongoClient), not Motor.
+_client: AsyncMongoClient | None = None
 _ready = False
 
 
@@ -25,7 +26,7 @@ async def init_db() -> bool:
     """Connect + init Beanie. Returns True on success, False if Mongo is unreachable."""
     global _client, _ready
     try:
-        _client = AsyncIOMotorClient(
+        _client = AsyncMongoClient(
             settings.mongo_uri, serverSelectionTimeoutMS=settings.mongo_timeout_ms
         )
         await _client.admin.command("ping")
@@ -41,7 +42,7 @@ async def init_db() -> bool:
 async def close_db() -> None:
     global _client, _ready
     if _client is not None:
-        _client.close()
+        await _client.close()
     _client = None
     _ready = False
 
