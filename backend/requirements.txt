@@ -9,6 +9,12 @@ python-dotenv>=1.0
 fastapi>=0.110
 uvicorn[standard]>=0.29
 
+# ── Persistence + auth ──
+beanie>=1.26              # async MongoDB ODM (pulls motor + pymongo)
+email-validator>=2.1      # pydantic EmailStr
+argon2-cffi>=23.1         # Argon2id password hashing
+PyJWT>=2.8                # access/refresh tokens
+
 # Optional LLM providers — install the one you use (LLM_PROVIDER env):
 #   pip install langchain-google-genai   # gemini
 #   pip install langchain-openai         # openai
