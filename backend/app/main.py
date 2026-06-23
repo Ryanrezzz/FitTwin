@@ -22,13 +22,18 @@ from app.agents.graph import build_graph
 from app.api.router import api_v1
 from app.api.routes import health
 from app.config import settings
+from app.db import close_db, init_db
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Compile the LangGraph once; reused across all requests (it is stateless).
     app.state.graph = build_graph()
+    # Connect Mongo when enabled; degrades gracefully if it's unreachable.
+    if settings.db_enabled:
+        await init_db()
     yield
+    await close_db()
     app.state.graph = None
 
 
