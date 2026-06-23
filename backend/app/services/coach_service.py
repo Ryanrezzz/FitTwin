@@ -1,21 +1,24 @@
-"""Service layer — use-cases that drive the agent graph.
+"""Service layer — use-cases that drive the agent graph and persist results.
 
 The router knows HTTP; this service knows *use-cases* (generate a plan, run a
 weekly review, answer a chat turn). It translates validated API DTOs into the
-plain-dict shapes the graph runner expects and back, so the agent layer stays
-ignorant of HTTP and Pydantic DTOs.
+plain-dict shapes the graph runner expects, runs the (synchronous) graph off the
+event loop, and persists any complete plan the run produces as a new version.
 
-No persistence yet — the graph is stateless given a profile + history, so these
-endpoints are pure functions of their input. DB-backed variants (load profile by
-user, persist versioned plan) layer on top of this same seam in a later sprint.
+History still arrives in the request body until daily logs are persisted; the
+active plan and profile are loaded from the DB by the router and passed in.
 """
 from __future__ import annotations
 
+import functools
 from typing import Any
+
+import anyio
 
 from app.agents.runner import run_coach
 from app.config import settings
-from app.schemas.coach import ActivePlanIn, ChatRequest, HistoryIn, WeeklyReviewRequest
+from app.repositories.plan_repo import PlanRepo
+from app.schemas.coach import ChatRequest, HistoryIn, WeeklyReviewRequest
 
 
 def _history_to_runner(history: HistoryIn) -> dict[str, Any]:
@@ -32,46 +35,59 @@ def _history_to_runner(history: HistoryIn) -> dict[str, Any]:
     return {"weight_series": weight_series, "logs": logs}
 
 
-def _plan_to_runner(plan: ActivePlanIn | None) -> dict[str, Any] | None:
-    return plan.model_dump() if plan is not None else None
-
-
 class CoachService:
-    """Drives the compiled LangGraph for each coach use-case."""
+    """Drives the compiled LangGraph for each coach use-case and persists plans."""
 
-    def __init__(self, graph: Any) -> None:
+    def __init__(self, graph: Any, plans: PlanRepo) -> None:
         self._graph = graph
+        self._plans = plans
 
-    def _run(self, **kwargs: Any) -> dict[str, Any]:
-        result = run_coach(
-            graph=self._graph,
-            recursion_limit=settings.agent_recursion_limit,
-            **kwargs,
+    async def _run(self, **kwargs: Any) -> dict[str, Any]:
+        # graph.invoke is synchronous (and may call out to an LLM) — keep it off
+        # the event loop so the API stays responsive.
+        call = functools.partial(
+            run_coach, graph=self._graph, recursion_limit=settings.agent_recursion_limit, **kwargs
         )
-        return {"final": result["final"], "steps": result["steps"]}
+        result = await anyio.to_thread.run_sync(call)
+        out: dict[str, Any] = {"final": result["final"], "steps": result["steps"]}
+        await self._persist_if_complete(out, user_id=kwargs["user_id"])
+        return out
 
-    def generate_plan(self, *, profile: dict[str, Any], user_id: str) -> dict[str, Any]:
-        return self._run(profile=profile, trigger="generate_plan", user_id=user_id)
+    async def _persist_if_complete(self, out: dict[str, Any], *, user_id: str) -> None:
+        """A run that yields both nutrition and workout is a full plan -> version it."""
+        final = out["final"]
+        nutrition, workout = final.get("nutrition"), final.get("workout")
+        if nutrition and workout:
+            plan = await self._plans.create_version(
+                user_id, nutrition=nutrition, workout=workout, intent=final.get("intent")
+            )
+            out["plan_id"] = str(plan.id)
+            out["plan_version"] = plan.version
 
-    def weekly_review(
-        self, req: WeeklyReviewRequest, *, profile: dict[str, Any], user_id: str
+    async def generate_plan(self, *, profile: dict[str, Any], user_id: str) -> dict[str, Any]:
+        return await self._run(profile=profile, trigger="generate_plan", user_id=user_id)
+
+    async def weekly_review(
+        self, req: WeeklyReviewRequest, *, profile: dict[str, Any],
+        active_plan: dict[str, Any] | None, user_id: str,
     ) -> dict[str, Any]:
-        return self._run(
+        return await self._run(
             profile=profile,
             history=_history_to_runner(req.history),
-            active_plan=_plan_to_runner(req.active_plan),
+            active_plan=active_plan,
             trigger="weekly_review",
             user_id=user_id,
         )
 
-    def chat(
-        self, req: ChatRequest, *, profile: dict[str, Any], user_id: str
+    async def chat(
+        self, req: ChatRequest, *, profile: dict[str, Any],
+        active_plan: dict[str, Any] | None, user_id: str,
     ) -> dict[str, Any]:
-        return self._run(
+        return await self._run(
             profile=profile,
             message=req.message,
             history=_history_to_runner(req.history),
-            active_plan=_plan_to_runner(req.active_plan),
+            active_plan=active_plan,
             trigger="chat",
             user_id=user_id,
         )

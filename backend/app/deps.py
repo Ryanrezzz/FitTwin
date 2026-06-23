@@ -16,6 +16,7 @@ from app.config import settings
 from app.core.security import AuthError, decode_token
 from app.db import db_ready
 from app.models.user import Role, User
+from app.repositories.plan_repo import BeaniePlanRepo, PlanRepo
 from app.repositories.profile_repo import BeanieProfileRepo, ProfileRepo
 from app.repositories.user_repo import BeanieUserRepo, UserRepo
 from app.services.auth_service import AuthService
