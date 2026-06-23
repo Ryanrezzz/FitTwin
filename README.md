@@ -119,6 +119,13 @@ Endpoints: `POST /api/v1/plans/generate`, `POST /api/v1/plans/weekly-review`,
 system, and roadmap are documented in [`docs/`](docs/). Implementation follows the sprint plan in
 [`docs/07-roadmap.md`](docs/07-roadmap.md).
 
+🟢 **AI core + API (Sprint 2)** — the 6-agent LangGraph (deterministic nutrition/progress tools, provider-agnostic
+LLM with an offline **fake** provider, safety gate) is built and tested, and now exposed over a **FastAPI** layer
+(`router → service → agent`, request-id tracing, consistent error envelope). Runs end-to-end with no DB or API key.
+
+🟡 **Next:** auth/JWT + MongoDB persistence (Sprints 0–1), then SSE chat + the scheduled weekly-review worker
+(Sprint 4), then the React frontend (Sprint 5).
+
 ## License
 
 MIT — see [`LICENSE`](LICENSE).
