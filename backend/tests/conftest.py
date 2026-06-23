@@ -90,6 +90,45 @@ class InMemoryProfileRepo:
         return profile
 
 
+class _FakePlan:
+    def __init__(self, user_id, version, *, nutrition, workout, intent, degraded) -> None:
+        self.id = PydanticObjectId()
+        self.user_id = user_id
+        self.version = version
+        self.active = True
+        self.intent = intent
+        self.calorie_target = int(nutrition.get("calories", 0))
+        self.macros = nutrition.get("macros", {})
+        self.nutrition = nutrition
+        self.workout = workout
+        self.degraded = degraded
+        self.created_at = datetime.now(UTC)
+
+
+class InMemoryPlanRepo:
+    def __init__(self) -> None:
+        self._plans: list[_FakePlan] = []
+
+    async def create_version(self, user_id, *, nutrition, workout, intent=None, degraded=False):
+        mine = [p for p in self._plans if str(p.user_id) == user_id]
+        for p in mine:
+            p.active = False
+        plan = _FakePlan(
+            PydanticObjectId(user_id), max((p.version for p in mine), default=0) + 1,
+            nutrition=nutrition, workout=workout, intent=intent, degraded=degraded,
+        )
+        self._plans.append(plan)
+        return plan
+
+    async def get_active(self, user_id):
+        return next((p for p in self._plans if str(p.user_id) == user_id and p.active), None)
+
+    async def get_by_id(self, plan_id, user_id):
+        return next(
+            (p for p in self._plans if str(p.id) == plan_id and str(p.user_id) == user_id), None
+        )
+
+
 @pytest.fixture()
 def client():
     users, profiles = InMemoryUserRepo(), InMemoryProfileRepo()
