@@ -93,13 +93,17 @@ cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
 python demo.py                  # zero-setup, fully offline walkthrough of the 6-agent graph
-pytest                          # 54 tests (agent core + API + auth), all offline
+pytest                          # 56 tests; the 2 DB-integration tests skip if Mongo isn't running
 ```
 
 **Use the live API** (auth + persistence need MongoDB; the LLM stays the offline **fake** by default):
 
 ```bash
-docker run -d -p 27017:27017 --name fittwin-mongo mongo:7   # or point MONGO_URI at Atlas
+# pick one to run Mongo on :27017 (the default MONGO_URI):
+brew install mongodb-community && brew services start mongodb-community   # macOS native
+# docker run -d -p 27017:27017 --name fittwin-mongo mongo:7               # or Docker
+# (or point MONGO_URI at a free MongoDB Atlas cluster)
+
 uvicorn app.main:app --reload                               # http://localhost:8000 — docs at /docs
 
 # register → login → onboard → generate a plan
