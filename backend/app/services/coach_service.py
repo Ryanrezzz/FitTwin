@@ -15,13 +15,7 @@ from typing import Any
 
 from app.agents.runner import run_coach
 from app.config import settings
-from app.schemas.coach import (
-    ActivePlanIn,
-    ChatRequest,
-    GeneratePlanRequest,
-    HistoryIn,
-    WeeklyReviewRequest,
-)
+from app.schemas.coach import ActivePlanIn, ChatRequest, HistoryIn, WeeklyReviewRequest
 
 
 def _history_to_runner(history: HistoryIn) -> dict[str, Any]:

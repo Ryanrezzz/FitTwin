@@ -68,16 +68,16 @@ class ActivePlanIn(BaseModel):
     macros: dict[str, int] = Field(default_factory=dict)
 
 
-class GeneratePlanRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    profile: ProfileIn
+class ProfileOut(ProfileIn):
+    """Profile view returned by GET /profile (same fields as the input)."""
 
 
+# Coach requests no longer carry the profile — it's loaded from the authenticated
+# user's stored profile. History/active_plan still arrive in the body until daily
+# logs + versioned plans are persisted (the next sprint).
 class WeeklyReviewRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    profile: ProfileIn
     history: HistoryIn = Field(default_factory=HistoryIn)
     active_plan: ActivePlanIn | None = None
 
@@ -85,7 +85,6 @@ class WeeklyReviewRequest(BaseModel):
 class ChatRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    profile: ProfileIn
     message: str = Field(min_length=1, max_length=2000)
     history: HistoryIn = Field(default_factory=HistoryIn)
     active_plan: ActivePlanIn | None = None
