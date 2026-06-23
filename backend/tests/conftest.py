@@ -131,9 +131,10 @@ class InMemoryPlanRepo:
 
 @pytest.fixture()
 def client():
-    users, profiles = InMemoryUserRepo(), InMemoryProfileRepo()
+    users, profiles, plans = InMemoryUserRepo(), InMemoryProfileRepo(), InMemoryPlanRepo()
     app.dependency_overrides[deps.get_user_repo] = lambda: users
     app.dependency_overrides[deps.get_profile_repo] = lambda: profiles
+    app.dependency_overrides[deps.get_plan_repo] = lambda: plans
     with TestClient(app) as c:   # context-managed -> runs lifespan (compiles graph)
         yield c
     app.dependency_overrides.clear()
