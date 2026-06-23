@@ -86,30 +86,39 @@ docker compose up --build       # api:8000, web:5173, mongo:27017, mongo-express
 
 See [`docs/01-system-architecture.md#4-docker-architecture`](docs/01-system-architecture.md).
 
-### Run the backend today (no Docker / DB needed yet)
-
-The agent core + API run fully offline with the deterministic **fake** LLM provider:
+### Run the backend today
 
 ```bash
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
-python demo.py                  # offline walkthrough of the 6-agent graph
-pytest                          # 42 tests (agent core + API)
-uvicorn app.main:app --reload   # API at http://localhost:8000 — docs at /docs
+python demo.py                  # zero-setup, fully offline walkthrough of the 6-agent graph
+pytest                          # 54 tests (agent core + API + auth), all offline
 ```
 
-Try it:
+**Use the live API** (auth + persistence need MongoDB; the LLM stays the offline **fake** by default):
 
 ```bash
-curl -s localhost:8000/api/v1/plans/generate -H 'Content-Type: application/json' \
-  -d '{"profile":{"name":"Alex","age":28,"sex":"male","height_cm":178,"weight_kg":82,
-       "goal":"lose","activity_level":"moderate","experience":"beginner",
-       "equipment":["dumbbells"],"training_days":4}}'
+docker run -d -p 27017:27017 --name fittwin-mongo mongo:7   # or point MONGO_URI at Atlas
+uvicorn app.main:app --reload                               # http://localhost:8000 — docs at /docs
+
+# register → login → onboard → generate a plan
+curl -s localhost:8000/api/v1/auth/register -H 'Content-Type: application/json' \
+  -d '{"email":"alex@example.com","password":"supersecret1"}'
+TOKEN=$(curl -s localhost:8000/api/v1/auth/login -H 'Content-Type: application/json' \
+  -d '{"email":"alex@example.com","password":"supersecret1"}' | python -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
+curl -s -X PUT localhost:8000/api/v1/profile -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"name":"Alex","age":28,"sex":"male","height_cm":178,"weight_kg":82,"goal":"lose",
+       "activity_level":"moderate","experience":"beginner","equipment":["dumbbells"],"training_days":4}'
+curl -s -X POST localhost:8000/api/v1/plans/generate -H "Authorization: Bearer $TOKEN"
 ```
 
-Endpoints: `POST /api/v1/plans/generate`, `POST /api/v1/plans/weekly-review`,
-`POST /api/v1/chat`, `GET /health`, `GET /api/v1/health/ready`.
+> Without Mongo the API still boots in **degraded mode**: `GET /health` and `python demo.py` work; auth/profile
+> routes return `503` until a database is reachable.
+
+Endpoints: `/api/v1/auth/{register,login,refresh,me}` · `GET|PUT /api/v1/profile` ·
+`POST /api/v1/plans/generate` · `POST /api/v1/plans/weekly-review` · `POST /api/v1/chat` ·
+`GET /health` · `GET /api/v1/health/ready`. All coach/profile routes require `Authorization: Bearer <access>`.
 
 ---
 
@@ -121,9 +130,14 @@ system, and roadmap are documented in [`docs/`](docs/). Implementation follows t
 
 🟢 **AI core + API (Sprint 2)** — the 6-agent LangGraph (deterministic nutrition/progress tools, provider-agnostic
 LLM with an offline **fake** provider, safety gate) is built and tested, and now exposed over a **FastAPI** layer
-(`router → service → agent`, request-id tracing, consistent error envelope). Runs end-to-end with no DB or API key.
+(`router → service → agent`, request-id tracing, consistent error envelope).
 
-🟡 **Next:** auth/JWT + MongoDB persistence (Sprints 0–1), then SSE chat + the scheduled weekly-review worker
+🟢 **Auth + persistence (Sprints 0–1)** — **JWT** access/refresh with **Argon2id** hashing, **MongoDB/Beanie**
+`User` + `Profile` documents behind a repository layer, RBAC scaffolding, and onboarding via `PUT /profile`.
+Coach routes are authenticated and read the user's stored profile. DB init degrades gracefully when Mongo is down;
+tests inject in-memory repos so the whole stack runs offline.
+
+🟡 **Next:** persist versioned plans + daily logs, SSE streaming on `/chat` and the scheduled weekly-review worker
 (Sprint 4), then the React frontend (Sprint 5).
 
 ## License
