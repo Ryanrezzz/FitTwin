@@ -15,3 +15,8 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's DI uses callables in argument defaults (Depends/Query/Path/Body) by
+# design — whitelist them so B008 doesn't fire on every route handler.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Path", "fastapi.Body"]
