@@ -160,8 +160,13 @@ tests inject in-memory repos so the whole stack runs offline.
 (prior versions retained, exactly one active per user); the coach loads the active plan from the DB for
 adherence/adaptation, and `GET /plans/active` + `GET /plans/{id}` read them back (object-level user scoping).
 
-🟡 **Next:** daily logs + progress entries + dashboard data (Sprint 3), then SSE streaming on `/chat` and the
-scheduled weekly-review worker (Sprint 4), then the React frontend (Sprint 5).
+🟢 **Web app (first slice)** — a **React + Vite (JavaScript)** SPA with the athletic design system: auth
+(login/register + token refresh), onboarding profile form, a dashboard rendering the active plan (calorie
+target, macro split, meal plan, training split, regenerate), and an AI-coach chat that shows which agents ran.
+TanStack Query for server state, Zustand for tokens, Framer Motion for motion.
+
+🟡 **Next:** daily logs + progress entries + dashboard charts (Sprint 3), then SSE streaming on `/chat`, the
+3D digital twin, and the scheduled weekly-review worker.
 
 ## License
 
