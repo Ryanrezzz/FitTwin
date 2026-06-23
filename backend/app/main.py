@@ -77,6 +77,11 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     return _envelope(request, exc.status_code, "HTTP_ERROR", str(exc.detail))
 
 
+@app.exception_handler(AuthError)
+async def auth_error_handler(request: Request, exc: AuthError):
+    return _envelope(request, 401, "UNAUTHORIZED", str(exc) or "Not authenticated")
+
+
 @app.exception_handler(Exception)
 async def unhandled_handler(request: Request, exc: Exception):
     return _envelope(request, 500, "INTERNAL_ERROR", "An unexpected error occurred.")
