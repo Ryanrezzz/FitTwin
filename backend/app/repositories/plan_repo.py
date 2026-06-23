@@ -32,7 +32,9 @@ class BeaniePlanRepo:
         latest = await Plan.find(Plan.user_id == oid).sort(-Plan.version).first_or_none()
         next_version = (latest.version + 1) if latest else 1
         # at most one active plan: flip the current one off before inserting the new one
-        await Plan.find(Plan.user_id == oid, Eq(Plan.active, True)).update(Set({Plan.active: False}))
+        await Plan.find(Plan.user_id == oid, Eq(Plan.active, True)).update(
+            Set({Plan.active: False})
+        )
         return await Plan(
             user_id=oid,
             version=next_version,

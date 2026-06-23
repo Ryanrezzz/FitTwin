@@ -85,7 +85,9 @@ async def test_plan_repo_versioning_and_scoping(mongo_db):
     repo = BeaniePlanRepo()
     uid = str(user.id)
 
-    v1 = await repo.create_version(uid, nutrition=NUTRITION, workout=WORKOUT, intent="generate_plan")
+    v1 = await repo.create_version(
+        uid, nutrition=NUTRITION, workout=WORKOUT, intent="generate_plan"
+    )
     assert v1.version == 1 and v1.active is True and v1.calorie_target == 2200
 
     v2 = await repo.create_version(uid, nutrition={**NUTRITION, "calories": 2100}, workout=WORKOUT)

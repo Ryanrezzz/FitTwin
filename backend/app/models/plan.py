@@ -7,7 +7,7 @@ unique; `{user_id, active}` serves "get my current plan".
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from beanie import Document, PydanticObjectId
@@ -16,7 +16,7 @@ from pymongo import IndexModel
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class Plan(Document):
