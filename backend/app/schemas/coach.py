@@ -59,27 +59,17 @@ class HistoryIn(BaseModel):
     logs: list[LogEntry] = Field(default_factory=list)
 
 
-class ActivePlanIn(BaseModel):
-    """The user's current plan targets, used for adherence + adaptation."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    calorie_target: int = Field(ge=0, le=20000)
-    macros: dict[str, int] = Field(default_factory=dict)
-
-
 class ProfileOut(ProfileIn):
     """Profile view returned by GET /profile (same fields as the input)."""
 
 
-# Coach requests no longer carry the profile — it's loaded from the authenticated
-# user's stored profile. History/active_plan still arrive in the body until daily
-# logs + versioned plans are persisted (the next sprint).
+# Coach requests no longer carry the profile or the active plan — both are loaded
+# from the authenticated user's stored data. History still arrives in the body
+# until daily logs are persisted (the next increment).
 class WeeklyReviewRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     history: HistoryIn = Field(default_factory=HistoryIn)
-    active_plan: ActivePlanIn | None = None
 
 
 class ChatRequest(BaseModel):
@@ -87,7 +77,21 @@ class ChatRequest(BaseModel):
 
     message: str = Field(min_length=1, max_length=2000)
     history: HistoryIn = Field(default_factory=HistoryIn)
-    active_plan: ActivePlanIn | None = None
+
+
+class PlanOut(BaseModel):
+    """A persisted, versioned plan."""
+
+    id: str
+    version: int
+    active: bool
+    intent: str | None = None
+    calorie_target: int
+    macros: dict[str, int] = Field(default_factory=dict)
+    nutrition: dict = Field(default_factory=dict)
+    workout: dict = Field(default_factory=dict)
+    degraded: bool = False
+    created_at: datetime
 
 
 class TraceStep(BaseModel):
@@ -96,7 +100,14 @@ class TraceStep(BaseModel):
 
 
 class CoachResponseOut(BaseModel):
-    """Envelope returned by every coach endpoint: the composed response + trace."""
+    """Envelope returned by every coach endpoint: the composed response + trace.
+
+    `plan_id`/`plan_version` are set when the run produced a complete plan that was
+    persisted as a new version.
+    """
+
+    plan_id: str | None = None
+    plan_version: int | None = None
 
     final: dict
     steps: list[TraceStep]
