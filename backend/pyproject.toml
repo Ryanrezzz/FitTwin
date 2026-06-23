@@ -1,0 +1,18 @@
+[project]
+name = "fittwin"
+version = "0.1.0"
+description = "Multi-agent AI fitness & nutrition coach"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q"
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

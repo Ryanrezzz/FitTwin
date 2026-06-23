@@ -1,0 +1,46 @@
+# ── Secrets / env ──
+.env
+.env.*
+!.env.example
+
+# ── Python / backend ──
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+.coverage
+htmlcov/
+
+# ── Node / frontend ──
+node_modules/
+frontend/dist/
+.vite/
+*.local
+npm-debug.log*
+pnpm-debug.log*
+yarn-error.log*
+
+# ── Docker / data ──
+mongo_data/
+*.pid
+
+# ── Editors / OS ──
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ── Remotion / media renders ──
+out/
+*.mp4
+!docs/**/*.mp4
+
+# ── LangChain / AI caches ──
+.langchain/
+.langgraph/

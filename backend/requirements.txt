@@ -1,0 +1,11 @@
+# ── FitTwin agent core (runtime) ──
+pydantic>=2.7
+pydantic-settings>=2.2
+langgraph>=0.2.0
+langchain-core>=0.3.0
+python-dotenv>=1.0
+
+# Optional LLM providers — install the one you use (LLM_PROVIDER env):
+#   pip install langchain-google-genai   # gemini
+#   pip install langchain-openai         # openai
+#   pip install langchain-ollama         # ollama (local / open-source)
