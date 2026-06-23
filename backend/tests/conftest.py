@@ -10,6 +10,8 @@ import os
 os.environ.setdefault("LLM_PROVIDER", "fake")
 os.environ["DB_ENABLED"] = "false"
 
+from datetime import datetime, timezone  # noqa: E402
+from enum import Enum  # noqa: E402
 from typing import Any  # noqa: E402
 
 import pytest  # noqa: E402
@@ -18,8 +20,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from app import deps  # noqa: E402
 from app.main import app  # noqa: E402
-from app.models.profile import Profile  # noqa: E402
-from app.models.user import Role, User  # noqa: E402
+from app.models.user import Role  # noqa: E402
 
 # A complete onboarding profile (PUT /profile body shape — no wrapper).
 PROFILE = {
