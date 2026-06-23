@@ -7,6 +7,7 @@ here so the router rejects bad input *before* it reaches the agent graph.
 from __future__ import annotations
 
 from datetime import date as DateType
+from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
