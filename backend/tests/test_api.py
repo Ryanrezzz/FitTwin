@@ -4,8 +4,6 @@ conftest and inject in-memory repos, so these run fully offline + deterministic.
 """
 from __future__ import annotations
 
-PLAN = {"calorie_target": 2000, "macros": {"protein_g": 164, "carbs_g": 150, "fat_g": 54}}
-
 
 def test_health_is_dependency_free(client):
     r = client.get("/health")
