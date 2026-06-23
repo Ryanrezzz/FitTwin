@@ -45,7 +45,7 @@ class WeightEntry(BaseModel):
 class LogEntry(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    date: date | None = None
+    date: DateType | None = None
     calories: int | None = Field(default=None, ge=0, le=20000)
     protein_g: int | None = Field(default=None, ge=0, le=1000)
     steps: int | None = Field(default=None, ge=0, le=200000)
