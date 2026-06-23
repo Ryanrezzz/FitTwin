@@ -17,8 +17,12 @@ from pymongo import AsyncMongoClient
 from app.config import settings
 from app.models import ALL_MODELS
 from app.models.user import Role
+from app.repositories.plan_repo import BeaniePlanRepo
 from app.repositories.profile_repo import BeanieProfileRepo
 from app.repositories.user_repo import BeanieUserRepo
+
+NUTRITION = {"calories": 2200, "macros": {"protein_g": 160, "carbs_g": 200, "fat_g": 60}}
+WORKOUT = {"split": "Upper / Lower", "sessions": [], "progression_notes": []}
 
 PROFILE_DATA = {
     "name": "Alex", "age": 28, "sex": "male", "height_cm": 178.0, "weight_kg": 82.0,
