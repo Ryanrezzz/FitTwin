@@ -78,3 +78,26 @@ async def test_profile_repo_upsert_is_idempotent(mongo_db):
 
     fetched = await repo.get_by_user(uid)
     assert fetched is not None and fetched.to_agent_profile()["training_days"] == 5
+
+
+async def test_plan_repo_versioning_and_scoping(mongo_db):
+    user = await BeanieUserRepo().create(email="lin@example.com", password_hash="h")
+    repo = BeaniePlanRepo()
+    uid = str(user.id)
+
+    v1 = await repo.create_version(uid, nutrition=NUTRITION, workout=WORKOUT, intent="generate_plan")
+    assert v1.version == 1 and v1.active is True and v1.calorie_target == 2200
+
+    v2 = await repo.create_version(uid, nutrition={**NUTRITION, "calories": 2100}, workout=WORKOUT)
+    assert v2.version == 2 and v2.active is True
+
+    active = await repo.get_active(uid)
+    assert active is not None and active.version == 2
+
+    # v1 is retained but deactivated (audit trail)
+    old = await repo.get_by_id(str(v1.id), uid)
+    assert old is not None and old.active is False
+
+    # object-level authz: another user cannot read this plan
+    other = await BeanieUserRepo().create(email="other@example.com", password_hash="h")
+    assert await repo.get_by_id(str(v2.id), str(other.id)) is None
