@@ -50,6 +50,7 @@ def run_coach(
     trigger: str = "chat",
     user_id: str = "demo",
     recursion_limit: int = 25,
+    graph: Any = None,
 ) -> dict[str, Any]:
     initial: dict[str, Any] = {
         "user_id": user_id,
@@ -68,4 +69,5 @@ def run_coach(
         "steps": [],
         "final": None,
     }
-    return get_graph().invoke(initial, config={"recursion_limit": recursion_limit})
+    runnable = graph if graph is not None else get_graph()
+    return runnable.invoke(initial, config={"recursion_limit": recursion_limit})
