@@ -49,7 +49,11 @@ class CoachService:
         self._graph = graph
 
     def _run(self, **kwargs: Any) -> dict[str, Any]:
-        result = run_coach(recursion_limit=settings.agent_recursion_limit, **kwargs)
+        result = run_coach(
+            graph=self._graph,
+            recursion_limit=settings.agent_recursion_limit,
+            **kwargs,
+        )
         return {"final": result["final"], "steps": result["steps"]}
 
     def generate_plan(self, req: GeneratePlanRequest, *, user_id: str) -> dict[str, Any]:
