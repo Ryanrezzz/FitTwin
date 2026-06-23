@@ -16,6 +16,21 @@ class Settings(BaseSettings):
     # Guards the LLM/agent path against runaway loops.
     agent_recursion_limit: int = 25
 
+    # ── Database (MongoDB / Beanie) ──
+    # db_enabled=False lets the API run fully offline (agent core only); auth and
+    # profile routes then return 503. Tests disable it and inject in-memory repos.
+    db_enabled: bool = True
+    mongo_uri: str = "mongodb://localhost:27017"
+    mongo_db: str = "fittwin"
+    # Short so a missing/unreachable Mongo fails fast instead of hanging startup.
+    mongo_timeout_ms: int = 2000
+
+    # ── Security (JWT + password hashing) ──
+    jwt_secret: str = "change-me-to-a-long-random-string"
+    jwt_algorithm: str = "HS256"
+    jwt_access_ttl_min: int = 15
+    jwt_refresh_ttl_days: int = 7
+
     # LLM — provider is swappable via env; default "fake" so the agent core runs
     # fully offline/deterministic in dev and CI with no API key.
     llm_provider: str = "fake"          # fake | gemini | openai | ollama
