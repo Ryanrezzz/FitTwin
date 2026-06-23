@@ -22,6 +22,7 @@ from app.agents.graph import build_graph
 from app.api.router import api_v1
 from app.api.routes import health
 from app.config import settings
+from app.core.security import AuthError
 from app.db import close_db, init_db
 
 
