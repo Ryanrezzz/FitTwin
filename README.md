@@ -93,7 +93,7 @@ cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
 python demo.py                  # zero-setup, fully offline walkthrough of the 6-agent graph
-pytest                          # 56 tests; the 2 DB-integration tests skip if Mongo isn't running
+pytest                          # 60 tests; the 3 DB-integration tests skip if Mongo isn't running
 ```
 
 **Use the live API** (auth + persistence need MongoDB; the LLM stays the offline **fake** by default):
@@ -121,8 +121,10 @@ curl -s -X POST localhost:8000/api/v1/plans/generate -H "Authorization: Bearer $
 > routes return `503` until a database is reachable.
 
 Endpoints: `/api/v1/auth/{register,login,refresh,me}` · `GET|PUT /api/v1/profile` ·
-`POST /api/v1/plans/generate` · `POST /api/v1/plans/weekly-review` · `POST /api/v1/chat` ·
-`GET /health` · `GET /api/v1/health/ready`. All coach/profile routes require `Authorization: Bearer <access>`.
+`POST /api/v1/plans/generate` · `GET /api/v1/plans/active` · `GET /api/v1/plans/{id}` ·
+`POST /api/v1/plans/weekly-review` · `POST /api/v1/chat` · `GET /health` · `GET /api/v1/health/ready`.
+All coach/profile routes require `Authorization: Bearer <access>`. A complete coach run is persisted as a
+new **versioned plan** (old versions kept, one active), and the coach reads your active plan from the DB.
 
 ---
 
