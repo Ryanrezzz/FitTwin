@@ -86,6 +86,31 @@ docker compose up --build       # api:8000, web:5173, mongo:27017, mongo-express
 
 See [`docs/01-system-architecture.md#4-docker-architecture`](docs/01-system-architecture.md).
 
+### Run the backend today (no Docker / DB needed yet)
+
+The agent core + API run fully offline with the deterministic **fake** LLM provider:
+
+```bash
+cd backend
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements-dev.txt
+python demo.py                  # offline walkthrough of the 6-agent graph
+pytest                          # 42 tests (agent core + API)
+uvicorn app.main:app --reload   # API at http://localhost:8000 — docs at /docs
+```
+
+Try it:
+
+```bash
+curl -s localhost:8000/api/v1/plans/generate -H 'Content-Type: application/json' \
+  -d '{"profile":{"name":"Alex","age":28,"sex":"male","height_cm":178,"weight_kg":82,
+       "goal":"lose","activity_level":"moderate","experience":"beginner",
+       "equipment":["dumbbells"],"training_days":4}}'
+```
+
+Endpoints: `POST /api/v1/plans/generate`, `POST /api/v1/plans/weekly-review`,
+`POST /api/v1/chat`, `GET /health`, `GET /api/v1/health/ready`.
+
 ---
 
 ## Project status
