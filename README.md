@@ -126,6 +126,19 @@ Endpoints: `/api/v1/auth/{register,login,refresh,me}` · `GET|PUT /api/v1/profil
 All coach/profile routes require `Authorization: Bearer <access>`. A complete coach run is persisted as a
 new **versioned plan** (old versions kept, one active), and the coach reads your active plan from the DB.
 
+### Run the web app
+
+The React SPA (in [`frontend/`](frontend/), built in **JavaScript**) talks to the API above:
+
+```bash
+cd frontend
+npm install
+npm run dev            # http://localhost:5173 — proxies /api → :8000
+```
+
+Flow: register/login → onboarding (profile) → dashboard (generate plan) → AI coach chat. See
+[`frontend/README.md`](frontend/README.md).
+
 ---
 
 ## Project status
