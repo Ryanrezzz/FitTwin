@@ -28,7 +28,7 @@ def hash_password(password: str) -> str:
 def verify_password(password: str, password_hash: str) -> bool:
     try:
         return _hasher.verify(password_hash, password)
-    except (VerifyMismatchError, Exception):  # noqa: BLE001 — any failure = no match
+    except Exception:  # noqa: BLE001 — mismatch or malformed hash both mean "no"
         return False
 
 
