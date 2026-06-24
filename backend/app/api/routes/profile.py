@@ -19,7 +19,7 @@ async def get_profile(
     profile = await profiles.get_by_user(str(user.id))
     if profile is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No profile yet — PUT to create one.")
-    return ProfileOut(**profile.to_agent_profile())
+    return ProfileOut(**profile.to_api())
 
 
 @router.put("", response_model=ProfileOut)
@@ -29,4 +29,4 @@ async def upsert_profile(
     profiles: ProfileRepo = Depends(get_profile_repo),
 ) -> ProfileOut:
     profile = await profiles.upsert(str(user.id), body.model_dump())
-    return ProfileOut(**profile.to_agent_profile())
+    return ProfileOut(**profile.to_api())

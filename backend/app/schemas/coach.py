@@ -11,7 +11,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.domain import ActivityLevel, Experience, Goal, Sex
+from app.domain import ActivityLevel, Experience, Goal, GymType, Sex
 
 
 class ProfileIn(BaseModel):
@@ -25,10 +25,12 @@ class ProfileIn(BaseModel):
     height_cm: float = Field(gt=50, lt=260)
     weight_kg: float = Field(gt=20, lt=400)
     goal: Goal
+    target_weight_kg: float | None = Field(default=None, gt=20, lt=400)
     activity_level: ActivityLevel
     experience: Experience
     dietary_prefs: list[str] = Field(default_factory=list)
     allergies: list[str] = Field(default_factory=list)
+    gym_type: GymType = GymType.partial
     equipment: list[str] = Field(default_factory=list)
     training_days: int = Field(default=3, ge=0, le=7)
     rate_kg_per_week: float = Field(default=0.5, ge=0.0, le=1.5)

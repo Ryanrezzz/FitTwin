@@ -31,3 +31,20 @@ class Experience(str, Enum):
     beginner = "beginner"
     intermediate = "intermediate"
     advanced = "advanced"
+
+
+class GymType(str, Enum):
+    """Where/how the user trains — seeds the effective equipment set."""
+
+    full_gym = "full_gym"        # commercial gym: assume all machines + free weights
+    home_gym = "home_gym"        # a stocked home setup (uses the checked equipment)
+    partial = "partial"          # a few items (dumbbells/bands/etc.)
+    bodyweight = "bodyweight"    # no equipment
+
+
+# Effective equipment unlocked by gym type (free-weight tokens flip the workout
+# template from the home pool to the gym pool — see agents/templates.py).
+FULL_GYM_EQUIPMENT = [
+    "barbell", "dumbbells", "cable_machine", "leg_press_machine",
+    "bench", "pull_up_bar", "treadmill", "machines",
+]
