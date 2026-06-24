@@ -5,4 +5,5 @@ export const qk = {
   activePlan: ["plan", "active"],
   plan: (id) => ["plan", id],
   dashboard: ["dashboard", "summary"],
+  todayLog: ["logs", "today"],
 };

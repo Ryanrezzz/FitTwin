@@ -1,26 +1,63 @@
+import { useEffect, useRef, useState } from "react";
 import { Navigate } from "react-router-dom";
-import { motion } from "framer-motion";
-import { Cpu, Flame, RefreshCw, Sparkles, Utensils } from "lucide-react";
-import { Button, Card, Spinner } from "../../components/ui.jsx";
+import { animate, motion, useReducedMotion } from "framer-motion";
+import { Cpu, Droplets, Dumbbell, Flame, Footprints, RefreshCw, Sparkles, Utensils } from "lucide-react";
+import { Button, Card, Input, Spinner } from "../../components/ui.jsx";
 import { useProfile } from "../profile/profile.api";
 import { useActivePlan, useDashboardSummary, useGeneratePlan } from "./plan.api";
+import { useTodayLog, useUpdateLog } from "./logs.api";
 
 const spring = { type: "spring", stiffness: 420, damping: 32 };
 
-/** A compact overview tile: big number, optional unit, progress bar and subtext. */
-function StatCard({ label, value, unit, sub, accent = "var(--color-teal)", progress }) {
+/** Spring-counts a number to its value on mount/update; instant if reduced-motion. */
+function CountUp({ value = 0, decimals = 0 }) {
+  const reduce = useReducedMotion();
+  const [n, setN] = useState(reduce ? value : 0);
+  const prev = useRef(0);
+  useEffect(() => {
+    if (reduce) {
+      setN(value);
+      prev.current = value;
+      return;
+    }
+    const controls = animate(prev.current, value, {
+      duration: 0.7,
+      ease: [0.2, 0.8, 0.2, 1],
+      onUpdate: (v) => setN(v),
+    });
+    prev.current = value;
+    return () => controls.stop();
+  }, [value, reduce]);
+  return (
+    <>
+      {Number(n).toLocaleString(undefined, {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals,
+      })}
+    </>
+  );
+}
+
+/** A compact overview tile: animated number, optional progress bar and subtext. */
+function StatCard({ label, value, decimals = 0, unit, suffix, sub, accent = "var(--color-teal)", progress }) {
   return (
     <Card className="p-4">
       <div className="text-[11px] font-semibold uppercase tracking-wide text-ink-soft">{label}</div>
       <div className="mt-1 flex items-end gap-1">
-        <span className="stat-number text-3xl leading-none">{value}</span>
+        <span className="stat-number text-3xl leading-none">
+          <CountUp value={value} decimals={decimals} />
+          {suffix}
+        </span>
         {unit && <span className="mb-0.5 text-sm font-semibold text-ink-soft">{unit}</span>}
       </div>
       {progress != null && (
         <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-line">
-          <div
-            className="h-full rounded-full transition-[width] duration-700"
-            style={{ width: `${Math.min(Math.max(progress, 0), 1) * 100}%`, background: accent }}
+          <motion.div
+            className="h-full rounded-full"
+            style={{ background: accent }}
+            initial={{ width: 0 }}
+            animate={{ width: `${Math.min(Math.max(progress, 0), 1) * 100}%` }}
+            transition={{ duration: 0.7, ease: [0.2, 0.8, 0.2, 1] }}
           />
         </div>
       )}
@@ -32,14 +69,13 @@ function StatCard({ label, value, unit, sub, accent = "var(--color-teal)", progr
 function OverviewCards({ s }) {
   const consumed = s.calorie_target - s.calories_remaining;
   const proteinDone = s.protein_target_g - s.protein_remaining_g;
-  const waterL = (s.water_ml / 1000).toFixed(1);
-  const waterGoalL = (s.water_goal_ml / 1000).toFixed(1);
   return (
     <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-      <StatCard label="Current weight" value={s.current_weight_kg} unit="kg" sub={`Goal: ${s.goal}`} />
+      <StatCard label="Current weight" value={s.current_weight_kg} decimals={1} unit="kg" sub={`Goal: ${s.goal}`} />
       <StatCard
         label="Target weight"
         value={s.target_weight_kg}
+        decimals={1}
         unit="kg"
         accent="var(--color-volt-press)"
         sub={s.est_goal_weeks ? `~${s.est_goal_weeks} wks to go` : "You're in range"}
@@ -61,21 +97,23 @@ function OverviewCards({ s }) {
       />
       <StatCard
         label="Water"
-        value={waterL}
+        value={s.water_ml / 1000}
+        decimals={1}
         unit="L"
         progress={s.water_ml / s.water_goal_ml}
-        sub={`goal ${waterGoalL} L`}
+        sub={`goal ${(s.water_goal_ml / 1000).toFixed(1)} L`}
       />
       <StatCard
         label="Steps"
-        value={s.steps.toLocaleString()}
+        value={s.steps}
         accent="var(--color-volt-press)"
         progress={s.steps / s.step_goal}
         sub={`goal ${s.step_goal.toLocaleString()}`}
       />
       <StatCard
         label="Workouts"
-        value={`${s.workout_completion_pct}%`}
+        value={s.workout_completion_pct}
+        suffix="%"
         accent="var(--color-volt-press)"
         progress={s.workout_completion_pct / 100}
         sub={`${s.workouts_done}/${s.workout_target_days} this week`}
@@ -91,49 +129,86 @@ function OverviewCards({ s }) {
   );
 }
 
-const MODE_BADGE = {
-  rule: { label: "Rule-based", cls: "bg-teal/15 text-teal" },
-  llm: { label: "LLM", cls: "bg-volt/30 text-ink" },
-  hybrid: { label: "Hybrid", cls: "bg-amber/20 text-amber" },
-};
-const ENGINE_LABEL = {
-  rule: "Rule-based (offline)",
-  gemini: "Gemini",
-  openai: "OpenAI",
-  local: "Local · Ollama",
-};
+/** Manual quick-log — the only honest way to fill water/steps/workout without a wearable. */
+function TodayCard({ waterGoalMl = 2500, stepGoal = 9000 }) {
+  const { data: log } = useTodayLog();
+  const update = useUpdateLog();
+  const [steps, setSteps] = useState("");
+  useEffect(() => {
+    if (log) setSteps(String(log.steps ?? 0));
+  }, [log]);
+  if (!log) return null;
 
-/** Surfaces the hybrid decision: which agents are plain Python vs LLM-powered. */
-function CoachingEngine({ engine, agents }) {
+  const water = log.water_ml ?? 0;
+  const addWater = (ml) => update.mutate({ water_ml: Math.max(0, water + ml) });
+  const saveSteps = () => update.mutate({ steps: Number(steps || 0) });
+  const toggleWorkout = () => update.mutate({ workout_done: !log.workout_done });
+
   return (
     <Card>
-      <div className="flex items-center justify-between">
-        <h3 className="flex items-center gap-2 font-display text-lg font-bold">
-          <Cpu className="size-4 text-volt-press" /> Coaching engine
-        </h3>
-        <span className="rounded-full bg-ink/5 px-2.5 py-1 text-xs font-medium text-ink-soft">
-          model: {ENGINE_LABEL[engine] ?? engine}
-        </span>
+      <h3 className="flex items-center gap-2 font-display text-lg font-bold">
+        <Flame className="size-4 text-coral" /> Today
+      </h3>
+      <p className="mt-1 text-sm text-ink-soft">Log it to keep your streak and goals live.</p>
+
+      {/* Water */}
+      <div className="mt-4">
+        <div className="mb-1 flex items-center justify-between text-sm">
+          <span className="flex items-center gap-1.5 font-medium">
+            <Droplets className="size-4 text-teal" /> Water
+          </span>
+          <span className="text-ink-soft">
+            {water} / {waterGoalMl} ml
+          </span>
+        </div>
+        <div className="h-1.5 overflow-hidden rounded-full bg-line">
+          <div
+            className="h-full rounded-full bg-teal transition-[width] duration-500"
+            style={{ width: `${Math.min(water / waterGoalMl, 1) * 100}%` }}
+          />
+        </div>
+        <div className="mt-2 flex gap-2">
+          <Button variant="outline" className="px-3 py-1.5" onClick={() => addWater(250)}>
+            +250 ml
+          </Button>
+          <Button variant="outline" className="px-3 py-1.5" onClick={() => addWater(500)}>
+            +500 ml
+          </Button>
+          <Button variant="ghost" className="px-3 py-1.5" onClick={() => addWater(-250)}>
+            −250
+          </Button>
+        </div>
       </div>
-      <p className="mt-1 text-sm text-ink-soft">
-        Each agent runs as plain Python rules, an LLM, or a hybrid of both.
-      </p>
-      <div className="mt-4 space-y-2">
-        {agents.map((a) => {
-          const m = MODE_BADGE[a.mode] ?? MODE_BADGE.rule;
-          return (
-            <div key={a.key} className="flex items-start justify-between gap-3 rounded-[12px] border border-line p-3">
-              <div>
-                <div className="font-semibold">{a.name}</div>
-                <div className="text-xs text-ink-soft">{a.blurb}</div>
-              </div>
-              <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${m.cls}`}>
-                {m.label}
-              </span>
-            </div>
-          );
-        })}
+
+      {/* Steps */}
+      <div className="mt-4">
+        <div className="mb-1 flex items-center gap-1.5 text-sm font-medium">
+          <Footprints className="size-4 text-volt-press" /> Steps
+          <span className="font-normal text-ink-soft">· goal {stepGoal.toLocaleString()}</span>
+        </div>
+        <div className="flex gap-2">
+          <Input
+            type="number"
+            inputMode="numeric"
+            value={steps}
+            onChange={(e) => setSteps(e.target.value)}
+            onBlur={saveSteps}
+          />
+          <Button variant="outline" onClick={saveSteps} loading={update.isPending}>
+            Save
+          </Button>
+        </div>
       </div>
+
+      {/* Workout */}
+      <Button
+        variant={log.workout_done ? "primary" : "outline"}
+        className="mt-4 w-full"
+        onClick={toggleWorkout}
+      >
+        <Dumbbell className="size-4" />
+        {log.workout_done ? "Workout done ✓" : "Mark workout done"}
+      </Button>
     </Card>
   );
 }
@@ -190,7 +265,9 @@ function TwinHero({ name, goal, calories }) {
           Goal: <span className="font-semibold text-ink">{goal}</span>
         </p>
         <div className="mt-5 flex items-end gap-2">
-          <span className="stat-number text-5xl">{calories}</span>
+          <span className="stat-number text-5xl">
+            <CountUp value={calories} />
+          </span>
           <span className="mb-1 text-sm font-semibold text-ink-soft">kcal / day target</span>
         </div>
       </div>
@@ -198,21 +275,34 @@ function TwinHero({ name, goal, calories }) {
   );
 }
 
+// Pick a food emoji for a meal so the plan reads less like a spreadsheet.
+const MEAL_EMOJI = { Breakfast: "🍳", Lunch: "🍛", Dinner: "🍽️", Snack: "🍎" };
+const MEAL_TINT = {
+  Breakfast: "from-amber/30",
+  Lunch: "from-teal/30",
+  Dinner: "from-coral/30",
+  Snack: "from-volt/40",
+};
+
 function WorkoutCard({ workout }) {
   return (
     <Card>
-      <h3 className="font-display text-lg font-bold">Training</h3>
+      <h3 className="flex items-center gap-2 font-display text-lg font-bold">
+        <Dumbbell className="size-4 text-volt-press" /> Training
+      </h3>
       <p className="text-sm text-ink-soft">{workout.split}</p>
       <div className="mt-4 space-y-3">
         {(workout.sessions ?? []).map((s, i) => (
-          <div key={i} className="rounded-[12px] border border-line p-3">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="font-semibold">{s.day}</span>
-              <span className="rounded-full bg-ink/5 px-2 py-0.5 text-xs font-medium text-ink-soft">
+          <div key={i} className="overflow-hidden rounded-[12px] border border-line">
+            <div className="flex items-center justify-between bg-gradient-to-r from-volt/20 to-transparent px-3 py-2">
+              <span className="flex items-center gap-2 font-semibold">
+                <Dumbbell className="size-4 text-volt-press" /> {s.day}
+              </span>
+              <span className="rounded-full bg-paper px-2 py-0.5 text-xs font-medium text-ink-soft">
                 {s.focus}
               </span>
             </div>
-            <ul className="space-y-1">
+            <ul className="space-y-1 p-3">
               {(s.exercises ?? []).map((ex, j) => (
                 <li key={j} className="flex justify-between text-sm">
                   <span>{ex.name}</span>
@@ -239,16 +329,74 @@ function MealsCard({ nutrition }) {
       </h3>
       <div className="mt-4 space-y-3">
         {meals.map((m, i) => (
-          <div key={i} className="rounded-[12px] border border-line p-3">
-            <div className="flex items-center justify-between">
-              <span className="font-semibold">{m.name}</span>
-              <span className="text-sm text-ink-soft">
-                {m.kcal} kcal · {m.protein_g}g P
-              </span>
+          <div key={i} className="flex gap-3 rounded-[12px] border border-line p-3">
+            <div
+              className={`grid size-12 shrink-0 place-items-center rounded-[10px] bg-gradient-to-br to-transparent text-2xl ${
+                MEAL_TINT[m.name] ?? "from-volt/30"
+              }`}
+            >
+              {MEAL_EMOJI[m.name] ?? "🍴"}
             </div>
-            <p className="mt-1 text-sm text-ink-soft">{(m.items ?? []).join(", ")}</p>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold">{m.name}</span>
+                <span className="text-sm text-ink-soft">
+                  {m.kcal} kcal · {m.protein_g}g P
+                </span>
+              </div>
+              <p className="mt-0.5 truncate text-sm capitalize text-ink-soft">
+                {(m.items ?? []).join(", ")}
+              </p>
+            </div>
           </div>
         ))}
+      </div>
+    </Card>
+  );
+}
+
+const MODE_BADGE = {
+  rule: { label: "Rule-based", cls: "bg-teal/15 text-teal" },
+  llm: { label: "LLM", cls: "bg-volt/30 text-ink" },
+  hybrid: { label: "Hybrid", cls: "bg-amber/20 text-amber" },
+};
+const ENGINE_LABEL = {
+  rule: "Rule-based (offline)",
+  gemini: "Gemini",
+  openai: "OpenAI",
+  local: "Local · Ollama",
+};
+
+/** Surfaces the hybrid decision: which agents are plain Python vs LLM-powered. */
+function CoachingEngine({ engine, agents }) {
+  return (
+    <Card>
+      <div className="flex items-center justify-between">
+        <h3 className="flex items-center gap-2 font-display text-lg font-bold">
+          <Cpu className="size-4 text-volt-press" /> Coaching engine
+        </h3>
+        <span className="rounded-full bg-ink/5 px-2.5 py-1 text-xs font-medium text-ink-soft">
+          model: {ENGINE_LABEL[engine] ?? engine}
+        </span>
+      </div>
+      <p className="mt-1 text-sm text-ink-soft">
+        Each agent runs as plain Python rules, an LLM, or a hybrid of both.
+      </p>
+      <div className="mt-4 space-y-2">
+        {agents.map((a) => {
+          const m = MODE_BADGE[a.mode] ?? MODE_BADGE.rule;
+          return (
+            <div key={a.key} className="flex items-start justify-between gap-3 rounded-[12px] border border-line p-3">
+              <div>
+                <div className="font-semibold">{a.name}</div>
+                <div className="text-xs text-ink-soft">{a.blurb}</div>
+              </div>
+              <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${m.cls}`}>
+                {m.label}
+              </span>
+            </div>
+          );
+        })}
       </div>
     </Card>
   );
@@ -273,11 +421,7 @@ export default function DashboardPage() {
           <p className="mt-1 text-ink-soft">
             Generate your first nutrition + training plan from your profile.
           </p>
-          <Button
-            className="mt-5"
-            loading={generate.isPending}
-            onClick={() => generate.mutate()}
-          >
+          <Button className="mt-5" loading={generate.isPending} onClick={() => generate.mutate()}>
             <Sparkles className="size-4" /> Generate my plan
           </Button>
           {generate.isError && <p className="mt-3 text-sm text-coral">{generate.error.message}</p>}
@@ -287,19 +431,12 @@ export default function DashboardPage() {
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={spring}
-      className="space-y-4"
-    >
+    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={spring} className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-sm text-ink-soft">
           <span className="rounded-full bg-ink/5 px-2.5 py-1 font-medium">Plan v{plan.version}</span>
           {plan.degraded && (
-            <span className="rounded-full bg-amber/20 px-2.5 py-1 font-medium text-amber">
-              fallback
-            </span>
+            <span className="rounded-full bg-amber/20 px-2.5 py-1 font-medium text-amber">fallback</span>
           )}
         </div>
         <Button variant="outline" loading={generate.isPending} onClick={() => generate.mutate()}>
@@ -322,11 +459,14 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
+        <TodayCard waterGoalMl={summary?.water_goal_ml} stepGoal={summary?.step_goal} />
+        {summary && <CoachingEngine engine={summary.engine} agents={summary.agents} />}
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
         <MealsCard nutrition={plan.nutrition ?? {}} />
         <WorkoutCard workout={plan.workout ?? {}} />
       </div>
-
-      {summary && <CoachingEngine engine={summary.engine} agents={summary.agents} />}
     </motion.div>
   );
 }
