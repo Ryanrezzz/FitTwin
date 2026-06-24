@@ -22,7 +22,7 @@ person-weeks.)
 | Observability (LangSmith, structlog, metrics) | 3 | 3 | 90% | 1.0 | **8.1** | Should |
 | Remotion weekly recap video | 2 | 3 | 60% | 1.5 | **2.4** | Could |
 | Admin/coach trace viewer | 2 | 2 | 80% | 0.5 | **6.4** | Could |
-| Wearables / voice / food-image (V2), RAG (V3) | — | — | — | — | — | Won't (now) |
+| Wearables · voice · food-image (V2) · RAG · long-term memory · medical-report analysis (V3) | — | — | — | — | — | Won't (now) |
 
 **Read:** the deterministic math tools have the highest RICE (tiny effort, huge correctness payoff) — build them
 *first*, before any agent. The adaptive weekly loop is lower RICE but it's the **product thesis**, so it's still a
@@ -119,15 +119,24 @@ Target: **~8–9 weeks solo, part-time** to a deployed V1.
 
 ---
 
-## 5. Future versions
+## 5. Future versions — explicitly NOT in V1
 
-- **V2** — Wearable integrations (Apple Health/Google Fit/Garmin steps & HR), voice assistant (Web Speech →
-  orchestrator), **image-based food recognition** (vision model → food_parser).
-- **V3** — **RAG** over exercise-science literature for cited recommendations; long-term per-user memory
-  (preferences, what worked) via a vector store; research-backed coaching with sources.
+These are **deliberately deferred**. V1's value is multi-agent collaboration + product engineering, not retrieval
+or hardware integrations. The architecture is built to *accept* each later without a rewrite — the table notes the
+seam that makes it a drop-in.
 
-*(Deliberately deferred: the spec says no RAG / no vector DB in V1 — V1's value is agent collaboration + product
-engineering, not retrieval.)*
+| Capability | Version | Why deferred | Seam already in place |
+|---|---|---|---|
+| **Wearable integrations** (Apple Health / Google Fit / Garmin — steps, HR, sleep) | V2 | OAuth + per-vendor sync is its own project; V1 takes manual logs | `daily_logs` already holds steps/sleep/water; an ingestion adapter writes the same docs |
+| **Food image recognition** | V2 | Vision model + cost + accuracy bar | a vision step feeds the existing `food_parser` tool → unchanged downstream |
+| **Voice assistant** | V2 | Web Speech / STT is a UI concern, not core value | speech → text → the **same** chat orchestrator endpoint |
+| **Long-term per-user memory** (preferences, what worked) | V3 | Needs a vector store + retrieval policy | `AgentRun` traces + `weekly_reports` are the corpus; memory is read into `AgentState.history` |
+| **RAG** over exercise-science literature (cited advice) | V3 | No vector DB in V1 by design | the agent layer already passes context slices; RAG adds a retrieval node before specialists |
+| **Medical report analysis** | V3 | Regulatory + safety bar is high; needs clinician review | Safety agent is already the gate; a parsed-report becomes another constraint it enforces |
+
+**The design rule:** every V2/V3 feature plugs into an existing seam (a tool, an `AgentState` slice, a graph node,
+or a log document) — none requires re-architecting the agent graph, the data model, or the API layering. That
+"extensible by construction" property is itself a V1 deliverable.
 
 ---
 

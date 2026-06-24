@@ -58,9 +58,15 @@ erDiagram
         enum activity_level
         string[] dietary_prefs
         string[] allergies
+        string[] disliked_foods
         enum experience
+        enum gym_type
         string[] equipment
         int training_days
+        enum budget_tier
+        enum lifestyle
+        int meals_per_day
+        enum cooking_time
     }
     GOAL {
         ObjectId _id
@@ -180,6 +186,8 @@ class DailyLog(Document):
     calories: int = 0
     protein_g: float = 0
     steps: int = 0
+    water_ml: int = 0            # drives the "water intake" card + daily task
+    sleep_hours: float = 0       # drives the "sleep goal" daily task
     workout_done: bool = False
     foods: list[FoodItem] = []
     class Settings:
@@ -203,6 +211,58 @@ class Plan(Document):
         name = "plans"
         indexes = [IndexModel([("user_id", 1), ("active", 1)])]
 ```
+
+---
+
+## Profile document (expanded)
+
+The Profile carries everything the agent graph needs in **one read**. Beyond body metrics it now models the
+**equipment context** and the **personalization signals** that drive the India-first nutrition + equipment-aware
+training (catalogs and effects in [`08-domain-nutrition-equipment.md`](08-domain-nutrition-equipment.md)).
+
+```python
+# app/models/profile.py  (enums live in app/domain.py)
+class Profile(Document):
+    user_id: Indexed(PydanticObjectId)
+    name: str; age: int; sex: Sex
+    height_cm: float; weight_kg: float
+    goal: Goal; rate_kg_per_week: float = 0.5      # denormalized goal (see note below)
+    activity_level: ActivityLevel
+    experience: Experience
+
+    # ── equipment context (08 §1) ──
+    gym_type: GymType = GymType.basic_gym          # full_commercial | basic | home | bodyweight_only
+    equipment: list[Equipment] = []                # dumbbells, barbell, bands, kettlebells, pull_up_bar,
+                                                   # bench, cable_machine, smith_machine, leg_press_machine,
+                                                   # chest_press_machine, treadmill, exercise_bike, no_equipment
+    training_days: int = 3
+
+    # ── nutrition personalization (08 §4) ──
+    dietary_prefs: list[str] = []                  # veg, nonveg, egg, jain, vegan, no_beef, no_pork, high_protein
+    allergies: list[str] = []                      # lactose, gluten, nuts, soy, egg, seafood, …
+    disliked_foods: list[str] = []                 # hard-excluded from candidate catalog
+    budget_tier: BudgetTier = BudgetTier.moderate  # student | moderate | flexible
+    lifestyle: Lifestyle = Lifestyle.home          # hostel | home | pg | working
+    meals_per_day: int = 4                         # 3..6 — how the day's macros are split
+    cooking_time: CookingTime = CookingTime.medium # none | low | medium | high
+
+    class Settings:
+        name = "profiles"
+        indexes = [IndexModel([("user_id", 1)], unique=True)]
+```
+
+- **Why enums (not bare strings):** equipment and the personalization tiers are closed sets the agents branch on —
+  modeling them as `app/domain.py` enums gives validation at the edge and a single source the frontend renders.
+  (`equipment` is stored as the enum's string values, so existing `list[str]` data is forward-compatible.)
+- **Denormalized goal:** for V1 velocity the active goal + rate live on the Profile so one read yields the full
+  agent input; the `GOAL` collection remains the system of record for goal *history*. Documented trade-off.
+
+> **Dashboard data is derived, not a new collection.** The richer dashboard (overview cards, nutrition/fitness
+> insights, AI insights, daily-tasks widget — see [`05 §5a`](05-frontend.md#5a-dashboard-the-product-surface)) is
+> **computed on read** by the Progress/Nutrition tools from existing `daily_logs`, `progress_entries`, the active
+> `plan`, and `weekly_reports`. The only storage additions are `water_ml` / `sleep_hours` on `DailyLog` (above),
+> which feed the water-intake card and the water/sleep daily tasks. No "dashboard" or "insights" collection — that
+> would duplicate state and invite drift.
 
 ---
 

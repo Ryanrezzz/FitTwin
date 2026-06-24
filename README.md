@@ -28,6 +28,8 @@ orchestration, FastAPI backend engineering, modern React, document-database mode
 | Skill it demonstrates | Where it shows up |
 |---|---|
 | **Multi-agent systems** | 6 agents over a typed LangGraph state machine with conditional routing |
+| **Hybrid AI architecture** | Per-agent **rule-based / LLM / hybrid** modes; pluggable models (`rule`/Gemini/OpenAI/local) behind one adapter |
+| **Domain modeling** | Comprehensive equipment taxonomy + capability map; **India-first** nutrition catalog (veg/non-veg) with budget/hostel/cooking personalization |
 | **Agent orchestration** | Orchestrator routes queries → sub-agents → reducer; safety as a *gate*, not a step |
 | **Backend engineering** | FastAPI, layered architecture (router → service → agent → repository), DI |
 | **System design** | HLD, sequence/agent/deployment diagrams, scaling & failure modes |
@@ -44,6 +46,8 @@ orchestration, FastAPI backend engineering, modern React, document-database mode
 - **No dark-purple gradient.** An **athletic-performance** design language: bone-white canvas, near-black ink,
   **electric volt-green** energy accent, coral streaks, teal data viz. See [`docs/06-design-system.md`](docs/06-design-system.md).
 - A **3D "digital twin"** (React Three Fiber) on the dashboard that fills/energizes as you hit goals.
+- A **product-grade bento dashboard** — overview cards, progress charts, nutrition/fitness insights, grounded **AI
+  insights**, and a **daily-tasks** widget — not a minimal stat page.
 - **Framer Motion** micro-interactions everywhere; **Remotion** auto-renders a shareable weekly recap video.
 
 ---
@@ -72,6 +76,7 @@ orchestration, FastAPI backend engineering, modern React, document-database mode
 | [`docs/05-frontend.md`](docs/05-frontend.md) | Folder structure, component hierarchy, state, API integration, pages |
 | [`docs/06-design-system.md`](docs/06-design-system.md) | Visual identity, tokens, motion, 3D twin, Remotion recap |
 | [`docs/07-roadmap.md`](docs/07-roadmap.md) | Roadmap, sprint plan, feature prioritization (RICE), V2/V3, resume copy |
+| [`docs/08-domain-nutrition-equipment.md`](docs/08-domain-nutrition-equipment.md) | Equipment taxonomy + capability map, India-first food catalog, meal-plan archetypes, personalization signals |
 
 ---
 

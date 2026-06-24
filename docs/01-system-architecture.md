@@ -25,10 +25,10 @@ flowchart TB
         REPO["Repository Layer (Beanie)"]
     end
 
-    subgraph AI["🤖 AI Plane"]
+    subgraph AI["🤖 AI Plane (hybrid)"]
         LG["LangGraph Orchestrator\n(stateful graph)"]
-        TOOLS["Deterministic tools\n(BMR/TDEE/macros, plateau math)"]
-        LLM["LLM Provider Adapter\nGemini · OpenAI · Ollama"]
+        TOOLS["Deterministic tools + data\n(BMR/TDEE/macros, plateau math,\nIndian food catalog, equipment map)"]
+        LLM["Execution-mode adapter\nrule · gemini · openai · local"]
     end
 
     subgraph Data["🗄️ Data Plane"]
@@ -63,6 +63,11 @@ flowchart TB
 - **Deterministic math is NOT done by the LLM.** BMR/TDEE/macros/plateau detection are pure Python tools the
   agents *call*. LLMs are great at language and synthesis, bad at arithmetic you can be sued over. This is the
   single most important reliability decision in the system.
+- **The agent layer is hybrid, not "all-LLM" or "all-rules."** Each agent declares a mode — **rule-based**
+  (Progress, Safety), **LLM-powered** (Nutrition, Motivation, Coach), or **hybrid** (Workout, Orchestrator) — and
+  the model behind every LLM-touching agent is **pluggable** (`rule | gemini | openai | local`) behind one adapter.
+  `rule` mode runs the whole product offline with no API key. Details in
+  [`02 §0`](02-multi-agent-system.md#0-agent-execution-modes-the-hybrid-architecture).
 - **Safety is a gate, not a step.** The Safety Agent can *veto/clamp* any plan before it reaches the user
   (see [`02-multi-agent-system.md`](02-multi-agent-system.md)). Modeling it as a graph edge guard rather than a
   polite suggestion is what makes "ensures recommendations are safe" real.
@@ -136,7 +141,7 @@ sequenceDiagram
 ```
 
 (Other example intents — "I ate 250g chicken and rice", "create a vegetarian meal plan", "I have no dumbbells",
-"I gained 1 kg" — and how they route are tabulated in [`02-multi-agent-system.md`](02-multi-agent-system.md#intent--routing-table).)
+"I gained 1 kg" — and how they route are tabulated in [`02-multi-agent-system.md`](02-multi-agent-system.md#4-intent--routing-table).)
 
 ---
 
@@ -262,3 +267,5 @@ volumes: { mongo_data: {} }
 | ADR-5 | SSE for chat | Streaming, simple, proxy-friendly | WebSockets (over-engineered here) |
 | ADR-6 | Separate worker for weekly jobs | Long AI runs must not block request workers | In-request background tasks |
 | ADR-7 | JWT access+refresh, stateless API | Horizontal scale, no server session store | Server-side sessions |
+| ADR-8 | **Hybrid agents + `rule` execution mode** | Per-agent rule/LLM/hybrid classification; a no-model `rule` mode that runs the whole app offline as both a demo and a circuit-breaker fallback | All-LLM (cost, non-determinism) or all-rules (no language/synthesis) |
+| ADR-9 | **Domain catalogs as deterministic data** (Indian foods, equipment→capability map) | Diet/allergy/budget/equipment constraints enforced by **pre-filtering data**, not prompt-begging — impossible-to-violate by construction | Trusting the LLM to "remember" constraints in the prompt |

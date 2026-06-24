@@ -1,11 +1,14 @@
-"""Progress Agent — fully deterministic analytics; LLM only prettifies the report."""
+"""Progress Agent — RULE-BASED. Fully deterministic analytics, no LLM call.
+
+Trend/plateau/adherence and the weekly report are computed from logged data so
+they are reproducible and explainable — never a model's guess. (See the hybrid
+classification in app/agents/registry.py and docs/02-multi-agent-system.md §0.)
+"""
 from __future__ import annotations
 
-from app.agents.prompts import PROGRESS_SYSTEM
 from app.agents.schemas import ProgressResult
 from app.agents.state import trace
 from app.agents.tools import progress_math as pm
-from app.ai.llm import get_llm
 from app.domain import Goal
 
 
@@ -46,8 +49,6 @@ def progress_agent(state: dict) -> dict:
         f"- **Adherence:** {adherence_pct}%\n"
         f"- **Plateau:** {'yes' if plateau else 'no'}\n"
     )
-    # LLM only rewrites the prose; the numbers above are immutable
-    report_md = get_llm().text(system=PROGRESS_SYSTEM, user=report_md, fallback=report_md)
 
     result = ProgressResult(
         trend=label,
