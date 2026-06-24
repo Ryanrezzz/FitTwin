@@ -11,6 +11,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends
 
+from app.agents import templates
 from app.agents.registry import AGENTS
 from app.agents.tools import dashboard_math
 from app.config import settings
@@ -73,8 +74,18 @@ async def summary(
     steps, workout %, streak, est. weeks-to-goal) + the hybrid agent map."""
     today = await _today_from_logs(str(user.id), logs)
     metrics = dashboard_math.dashboard_summary(profile, active_plan, today)
+    # Today's meal suggestion — rotated by weekday so it varies day-to-day, while
+    # still hitting the same calorie/protein targets and honoring diet/allergies.
+    today_meals = templates.build_meal_plan(
+        metrics["calorie_target"],
+        metrics["protein_target_g"],
+        profile.get("dietary_prefs", []),
+        profile.get("allergies", []),
+        day_offset=date.today().weekday(),
+    )
     return DashboardSummaryOut(
         **metrics,
+        today_meals=today_meals,
         engine=_engine(),
         agents=[AgentInfo(**a) for a in AGENTS],
     )

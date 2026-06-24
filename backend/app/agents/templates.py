@@ -9,17 +9,28 @@ from __future__ import annotations
 from app.domain import Experience
 
 # ──────────────────────────────────────────────────────────────────────────
-# MEALS
+# MEALS — India-first staples (see docs/08); rotated per day for variety.
 # ──────────────────────────────────────────────────────────────────────────
 _MEAL_SPLIT = [("Breakfast", 0.28), ("Lunch", 0.34), ("Dinner", 0.30), ("Snack", 0.08)]
 
 _PROTEIN_SOURCES = {
-    "omnivore": ["chicken breast", "eggs", "greek yogurt", "lean beef", "fish", "whey shake"],
-    "vegetarian": ["paneer", "eggs", "greek yogurt", "lentils (dal)", "tofu", "whey shake"],
-    "vegan": ["tofu", "tempeh", "lentils (dal)", "chickpeas", "soy milk", "pea-protein shake"],
+    "omnivore": [
+        "chicken breast", "eggs", "fish curry", "egg bhurji", "curd (dahi)",
+        "keema", "paneer", "whey shake",
+    ],
+    "vegetarian": [
+        "paneer", "rajma", "chana (chickpeas)", "dal (lentils)", "curd (dahi)",
+        "soy chunks", "besan chilla", "tofu", "whey shake",
+    ],
+    "vegan": [
+        "tofu", "soy chunks", "rajma", "chana (chickpeas)", "dal (lentils)",
+        "peanuts", "sprouts", "pea-protein shake",
+    ],
 }
-_CARB_SOURCES = ["rice", "oats", "whole-wheat roti", "potatoes", "banana", "quinoa"]
-_VEG = ["mixed salad", "spinach", "broccoli", "seasonal vegetables"]
+# Breakfast carbs differ from main-meal carbs so a rotated day still reads sensibly.
+_BREAKFAST_CARBS = ["oats", "poha", "idli", "dosa", "upma", "banana", "vegetable sandwich"]
+_MAIN_CARBS = ["rice", "whole-wheat roti", "jeera rice", "quinoa", "potatoes", "khichdi"]
+_VEG = ["mixed salad", "palak (spinach)", "bhindi", "mixed sabzi", "cucumber raita"]
 
 
 def _diet_key(dietary_prefs: list[str]) -> str:
@@ -31,20 +42,35 @@ def _diet_key(dietary_prefs: list[str]) -> str:
     return "omnivore"
 
 
+def _filter(pool: list[str], allergens: set[str]) -> list[str]:
+    return [x for x in pool if not any(a in x.lower() for a in allergens)] or pool
+
+
 def build_meal_plan(
-    calories: int, protein_g: int, dietary_prefs: list[str], allergies: list[str]
+    calories: int,
+    protein_g: int,
+    dietary_prefs: list[str],
+    allergies: list[str],
+    day_offset: int = 0,
 ) -> list[dict]:
+    """One day's meals. `day_offset` rotates the food selection so a weekly plan
+    (or "today") varies day-to-day instead of repeating the same foods."""
     diet = _diet_key(dietary_prefs)
     allergens = {a.lower() for a in allergies}
-    proteins = [p for p in _PROTEIN_SOURCES[diet] if not any(a in p for a in allergens)]
-    carbs = [c for c in _CARB_SOURCES if not any(a in c for a in allergens)]
+    proteins = _filter(_PROTEIN_SOURCES[diet], allergens)
+    bfast_carbs = _filter(_BREAKFAST_CARBS, allergens)
+    main_carbs = _filter(_MAIN_CARBS, allergens)
+    veg = _filter(_VEG, allergens)
+
     meals: list[dict] = []
     for i, (name, frac) in enumerate(_MEAL_SPLIT):
-        p_src = proteins[i % len(proteins)] if proteins else "protein source"
-        c_src = carbs[i % len(carbs)] if carbs else "complex carbs"
+        rot = i + day_offset                       # shift the rotation each day
+        p_src = proteins[rot % len(proteins)]
+        carb_pool = bfast_carbs if name == "Breakfast" else main_carbs
+        c_src = carb_pool[rot % len(carb_pool)]
         items = [p_src, c_src]
         if name in ("Lunch", "Dinner"):
-            items.append(_VEG[i % len(_VEG)])
+            items.append(veg[rot % len(veg)])
         meals.append(
             {
                 "name": name,

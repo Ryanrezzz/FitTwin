@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { animate, motion, useReducedMotion } from "framer-motion";
-import { Cpu, Droplets, Dumbbell, Flame, Footprints, RefreshCw, Sparkles, Utensils } from "lucide-react";
+import { Droplets, Dumbbell, Flame, Footprints, Plus, RefreshCw, Sparkles, Utensils } from "lucide-react";
 import { Button, Card, Input, Spinner } from "../../components/ui.jsx";
 import { useProfile } from "../profile/profile.api";
 import { useActivePlan, useDashboardSummary, useGeneratePlan } from "./plan.api";
@@ -129,11 +129,13 @@ function OverviewCards({ s }) {
   );
 }
 
-/** Manual quick-log — the only honest way to fill water/steps/workout without a wearable. */
+/** Manual quick-log — the only honest way to fill water/steps/food without a wearable. */
 function TodayCard({ waterGoalMl = 2500, stepGoal = 9000 }) {
   const { data: log } = useTodayLog();
   const update = useUpdateLog();
   const [steps, setSteps] = useState("");
+  const [kcal, setKcal] = useState("");
+  const [protein, setProtein] = useState("");
   useEffect(() => {
     if (log) setSteps(String(log.steps ?? 0));
   }, [log]);
@@ -143,6 +145,17 @@ function TodayCard({ waterGoalMl = 2500, stepGoal = 9000 }) {
   const addWater = (ml) => update.mutate({ water_ml: Math.max(0, water + ml) });
   const saveSteps = () => update.mutate({ steps: Number(steps || 0) });
   const toggleWorkout = () => update.mutate({ workout_done: !log.workout_done });
+  const logFood = () => {
+    const c = Number(kcal || 0);
+    const p = Number(protein || 0);
+    if (!c && !p) return;
+    update.mutate({
+      calories: (log.calories ?? 0) + c,
+      protein_g: (log.protein_g ?? 0) + p,
+    });
+    setKcal("");
+    setProtein("");
+  };
 
   return (
     <Card>
@@ -150,6 +163,35 @@ function TodayCard({ waterGoalMl = 2500, stepGoal = 9000 }) {
         <Flame className="size-4 text-coral" /> Today
       </h3>
       <p className="mt-1 text-sm text-ink-soft">Log it to keep your streak and goals live.</p>
+
+      {/* Food → drives "Calories left" / "Protein left" */}
+      <div className="mt-4">
+        <div className="mb-1 flex items-center gap-1.5 text-sm font-medium">
+          <Utensils className="size-4 text-coral" /> Log food
+          <span className="font-normal text-ink-soft">
+            · eaten {log.calories ?? 0} kcal / {Math.round(log.protein_g ?? 0)}g P
+          </span>
+        </div>
+        <div className="flex gap-2">
+          <Input
+            type="number"
+            inputMode="numeric"
+            placeholder="kcal"
+            value={kcal}
+            onChange={(e) => setKcal(e.target.value)}
+          />
+          <Input
+            type="number"
+            inputMode="numeric"
+            placeholder="protein g"
+            value={protein}
+            onChange={(e) => setProtein(e.target.value)}
+          />
+          <Button variant="outline" onClick={logFood} loading={update.isPending}>
+            <Plus className="size-4" /> Add
+          </Button>
+        </div>
+      </div>
 
       {/* Water */}
       <div className="mt-4">
@@ -275,8 +317,19 @@ function TwinHero({ name, goal, calories }) {
   );
 }
 
-// Pick a food emoji for a meal so the plan reads less like a spreadsheet.
-const MEAL_EMOJI = { Breakfast: "🍳", Lunch: "🍛", Dinner: "🍽️", Snack: "🍎" };
+// Pick a food emoji from the meal's main item so each card reads like a dish.
+const FOOD_EMOJI = [
+  [/oat/, "🥣"], [/poha|upma|khichdi/, "🍚"], [/idli|dosa/, "🥞"], [/egg/, "🥚"],
+  [/paneer|tofu|curd|dahi|yogurt|milk/, "🧀"], [/chicken|keema/, "🍗"], [/fish/, "🐟"],
+  [/rajma|chana|dal|lentil|sprout|soy|chickpea/, "🍲"], [/roti|chilla|sandwich/, "🫓"],
+  [/rice|quinoa/, "🍚"], [/banana|fruit/, "🍌"], [/salad|palak|spinach|bhindi|sabzi|veg|cucumber/, "🥗"],
+  [/peanut|whey|shake|protein/, "🥜"], [/potato/, "🥔"],
+];
+const foodEmoji = (items = []) => {
+  const text = items.join(" ").toLowerCase();
+  for (const [re, emoji] of FOOD_EMOJI) if (re.test(text)) return emoji;
+  return "🍴";
+};
 const MEAL_TINT = {
   Breakfast: "from-amber/30",
   Lunch: "from-teal/30",
@@ -304,12 +357,21 @@ function WorkoutCard({ workout }) {
             </div>
             <ul className="space-y-1 p-3">
               {(s.exercises ?? []).map((ex, j) => (
-                <li key={j} className="flex justify-between text-sm">
-                  <span>{ex.name}</span>
-                  <span className="text-ink-soft">
+                <motion.li
+                  key={j}
+                  className="flex items-center justify-between rounded-md px-1.5 py-1 text-sm hover:bg-ink/5"
+                  initial={{ opacity: 0, x: -8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: j * 0.05, ...spring }}
+                >
+                  <span className="flex items-center gap-2">
+                    <span className="size-1.5 rounded-full bg-volt-press" />
+                    {ex.name}
+                  </span>
+                  <span className="font-medium text-ink-soft">
                     {ex.sets} × {ex.reps}
                   </span>
-                </li>
+                </motion.li>
               ))}
             </ul>
           </div>
@@ -319,23 +381,36 @@ function WorkoutCard({ workout }) {
   );
 }
 
-function MealsCard({ nutrition }) {
-  const meals = nutrition.meal_plan ?? [];
+const WEEKDAY = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+function MealsCard({ meals = [] }) {
   if (meals.length === 0) return null;
+  const today = WEEKDAY[(new Date().getDay() + 6) % 7]; // JS Sun=0 → Mon-first
   return (
     <Card>
-      <h3 className="flex items-center gap-2 font-display text-lg font-bold">
-        <Utensils className="size-4 text-teal" /> Meal plan
-      </h3>
+      <div className="flex items-center justify-between">
+        <h3 className="flex items-center gap-2 font-display text-lg font-bold">
+          <Utensils className="size-4 text-teal" /> Today's meals
+        </h3>
+        <span className="rounded-full bg-teal/15 px-2.5 py-1 text-xs font-semibold text-teal">
+          {today}
+        </span>
+      </div>
       <div className="mt-4 space-y-3">
         {meals.map((m, i) => (
-          <div key={i} className="flex gap-3 rounded-[12px] border border-line p-3">
+          <motion.div
+            key={i}
+            className="flex gap-3 rounded-[12px] border border-line p-3"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.06, ...spring }}
+          >
             <div
               className={`grid size-12 shrink-0 place-items-center rounded-[10px] bg-gradient-to-br to-transparent text-2xl ${
                 MEAL_TINT[m.name] ?? "from-volt/30"
               }`}
             >
-              {MEAL_EMOJI[m.name] ?? "🍴"}
+              {foodEmoji(m.items)}
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between">
@@ -348,55 +423,8 @@ function MealsCard({ nutrition }) {
                 {(m.items ?? []).join(", ")}
               </p>
             </div>
-          </div>
+          </motion.div>
         ))}
-      </div>
-    </Card>
-  );
-}
-
-const MODE_BADGE = {
-  rule: { label: "Rule-based", cls: "bg-teal/15 text-teal" },
-  llm: { label: "LLM", cls: "bg-volt/30 text-ink" },
-  hybrid: { label: "Hybrid", cls: "bg-amber/20 text-amber" },
-};
-const ENGINE_LABEL = {
-  rule: "Rule-based (offline)",
-  gemini: "Gemini",
-  openai: "OpenAI",
-  local: "Local · Ollama",
-};
-
-/** Surfaces the hybrid decision: which agents are plain Python vs LLM-powered. */
-function CoachingEngine({ engine, agents }) {
-  return (
-    <Card>
-      <div className="flex items-center justify-between">
-        <h3 className="flex items-center gap-2 font-display text-lg font-bold">
-          <Cpu className="size-4 text-volt-press" /> Coaching engine
-        </h3>
-        <span className="rounded-full bg-ink/5 px-2.5 py-1 text-xs font-medium text-ink-soft">
-          model: {ENGINE_LABEL[engine] ?? engine}
-        </span>
-      </div>
-      <p className="mt-1 text-sm text-ink-soft">
-        Each agent runs as plain Python rules, an LLM, or a hybrid of both.
-      </p>
-      <div className="mt-4 space-y-2">
-        {agents.map((a) => {
-          const m = MODE_BADGE[a.mode] ?? MODE_BADGE.rule;
-          return (
-            <div key={a.key} className="flex items-start justify-between gap-3 rounded-[12px] border border-line p-3">
-              <div>
-                <div className="font-semibold">{a.name}</div>
-                <div className="text-xs text-ink-soft">{a.blurb}</div>
-              </div>
-              <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${m.cls}`}>
-                {m.label}
-              </span>
-            </div>
-          );
-        })}
       </div>
     </Card>
   );
@@ -460,13 +488,10 @@ export default function DashboardPage() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <TodayCard waterGoalMl={summary?.water_goal_ml} stepGoal={summary?.step_goal} />
-        {summary && <CoachingEngine engine={summary.engine} agents={summary.agents} />}
+        <MealsCard meals={summary?.today_meals ?? plan.nutrition?.meal_plan ?? []} />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <MealsCard nutrition={plan.nutrition ?? {}} />
-        <WorkoutCard workout={plan.workout ?? {}} />
-      </div>
+      <WorkoutCard workout={plan.workout ?? {}} />
     </motion.div>
   );
 }

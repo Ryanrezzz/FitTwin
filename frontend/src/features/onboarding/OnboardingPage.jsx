@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Button, Card, Field, Input, Select, Spinner, cn } from "../../components/ui.jsx";
 import { useProfile, useSaveProfile } from "../profile/profile.api";
+import { useGeneratePlan } from "../dashboard/plan.api";
 
 // Numeric fields are kept as STRINGS in form state so the inputs don't fight the
 // user (no "089" leading-zero artifact, empty is allowed); we coerce on submit.
@@ -55,6 +56,7 @@ export default function OnboardingPage() {
   const isProfileRoute = location.pathname === "/profile";
   const { data: profile, isLoading } = useProfile();
   const save = useSaveProfile();
+  const generate = useGeneratePlan();
   const [form, setForm] = useState(EMPTY);
   const [error, setError] = useState(null);
 
@@ -114,11 +116,16 @@ export default function OnboardingPage() {
     };
     try {
       await save.mutateAsync(payload);
+      // Regenerate so the dashboard (plan, calories, macros, workout split, meals)
+      // reflects the new profile — otherwise it keeps showing the stale plan.
+      await generate.mutateAsync().catch(() => {});
       navigate("/");
     } catch (err) {
       setError(err.message || "Could not save profile");
     }
   }
+
+  const busy = save.isPending || generate.isPending;
 
   if (isLoading) return <Spinner label="Loading profile…" />;
 
@@ -191,11 +198,11 @@ export default function OnboardingPage() {
               <option value="very_active">Very active</option>
             </Select>
           </Field>
-          <Field label="Experience">
+          <Field label="Training experience" hint="how long you've trained, not your job">
             <Select value={form.experience} onChange={set("experience")}>
-              <option value="beginner">Beginner</option>
-              <option value="intermediate">Intermediate</option>
-              <option value="advanced">Advanced</option>
+              <option value="beginner">Beginner (&lt; 1 yr lifting)</option>
+              <option value="intermediate">Intermediate (1–3 yrs)</option>
+              <option value="advanced">Advanced (3+ yrs)</option>
             </Select>
           </Field>
 
@@ -269,8 +276,12 @@ export default function OnboardingPage() {
           {error && <p className="text-sm text-coral sm:col-span-2">{error}</p>}
 
           <div className="sm:col-span-2">
-            <Button type="submit" loading={save.isPending} className="w-full">
-              {isProfileRoute ? "Save changes" : "Save & continue"}
+            <Button type="submit" loading={busy} className="w-full">
+              {busy
+                ? "Building your plan…"
+                : isProfileRoute
+                  ? "Save & update plan"
+                  : "Save & continue"}
             </Button>
           </div>
         </form>

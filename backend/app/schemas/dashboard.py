@@ -11,6 +11,13 @@ class AgentInfo(BaseModel):
     blurb: str
 
 
+class MealOut(BaseModel):
+    name: str
+    items: list[str]
+    kcal: int
+    protein_g: int
+
+
 class DashboardSummaryOut(BaseModel):
     """The overview-card values + the hybrid coaching-engine map."""
 
@@ -33,6 +40,9 @@ class DashboardSummaryOut(BaseModel):
     workouts_done: int
     workout_completion_pct: int
     streak_days: int
+
+    # today's meal suggestion (rotates daily so it isn't the same every day)
+    today_meals: list[MealOut] = []
 
     # how the coach thinks today (see app/agents/registry.py)
     engine: str                 # rule | gemini | openai | local
