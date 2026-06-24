@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     # LLM — provider is swappable via env; default "fake" so the agent core runs
     # fully offline/deterministic in dev and CI with no API key.
     llm_provider: str = "fake"          # fake | gemini | openai | ollama
-    llm_model: str = "gemini-2.0-flash"
+    llm_model: str = "gemini-2.5-flash"
     llm_temperature: float = 0.0
     gemini_api_key: str = ""
     openai_api_key: str = ""
