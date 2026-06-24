@@ -56,6 +56,9 @@ class _FakeProfile:
     def to_agent_profile(self) -> dict[str, Any]:
         return _agent_shape(self._data)
 
+    def to_api(self) -> dict[str, Any]:
+        return _agent_shape(self._data)
+
 
 class InMemoryUserRepo:
     """Satisfies the UserRepo Protocol with in-memory dicts."""
@@ -129,12 +132,55 @@ class InMemoryPlanRepo:
         )
 
 
+class _FakeDailyLog:
+    def __init__(self, day, data: dict[str, Any]) -> None:
+        self.date = day
+        self.water_ml = data.get("water_ml", 0)
+        self.steps = data.get("steps", 0)
+        self.calories = data.get("calories", 0)
+        self.protein_g = data.get("protein_g", 0)
+        self.workout_done = data.get("workout_done", False)
+
+    def update(self, data: dict[str, Any]) -> None:
+        for key, value in data.items():
+            setattr(self, key, value)
+
+    def to_api(self) -> dict[str, Any]:
+        return {
+            "date": self.date.isoformat(), "water_ml": self.water_ml, "steps": self.steps,
+            "calories": self.calories, "protein_g": self.protein_g,
+            "workout_done": self.workout_done,
+        }
+
+
+class InMemoryLogRepo:
+    def __init__(self) -> None:
+        self._by_user: dict[str, dict[Any, _FakeDailyLog]] = {}
+
+    async def get_day(self, user_id: str, day):
+        return self._by_user.get(user_id, {}).get(day)
+
+    async def upsert_day(self, user_id: str, day, data: dict[str, Any]):
+        days = self._by_user.setdefault(user_id, {})
+        if day in days:
+            days[day].update(data)
+        else:
+            days[day] = _FakeDailyLog(day, data)
+        return days[day]
+
+    async def recent(self, user_id: str, limit: int = 30):
+        days = self._by_user.get(user_id, {})
+        return sorted(days.values(), key=lambda log: log.date, reverse=True)[:limit]
+
+
 @pytest.fixture()
 def client():
     users, profiles, plans = InMemoryUserRepo(), InMemoryProfileRepo(), InMemoryPlanRepo()
+    logs = InMemoryLogRepo()
     app.dependency_overrides[deps.get_user_repo] = lambda: users
     app.dependency_overrides[deps.get_profile_repo] = lambda: profiles
     app.dependency_overrides[deps.get_plan_repo] = lambda: plans
+    app.dependency_overrides[deps.get_log_repo] = lambda: logs
     with TestClient(app) as c:   # context-managed -> runs lifespan (compiles graph)
         yield c
     app.dependency_overrides.clear()

@@ -8,6 +8,7 @@ number a user acts on comes from a tested tool.
 from __future__ import annotations
 
 import math
+from datetime import date, timedelta
 
 from app.agents.tools import nutrition_math as nm
 from app.domain import ActivityLevel, Goal, Sex
@@ -60,6 +61,24 @@ def _pct(part: float, whole: float) -> int:
     return int(round(part / whole * 100)) if whole > 0 else 0
 
 
+def streak_days(active_dates: set[date], today: date | None = None) -> int:
+    """Consecutive days up to today with logged activity (today optional)."""
+    today = today or date.today()
+    streak = 0
+    day = today if today in active_dates else today - timedelta(days=1)
+    while day in active_dates:
+        streak += 1
+        day -= timedelta(days=1)
+    return streak
+
+
+def workouts_done_in_week(workout_dates: set[date], today: date | None = None) -> int:
+    """Count of completed workouts in the trailing 7 days (incl. today)."""
+    today = today or date.today()
+    week_start = today - timedelta(days=6)
+    return sum(1 for d in workout_dates if week_start <= d <= today)
+
+
 def dashboard_summary(profile: dict, plan: dict | None, today: dict | None = None) -> dict:
     """Compute the overview-card values from profile + active plan (+ today's log).
 
@@ -72,7 +91,12 @@ def dashboard_summary(profile: dict, plan: dict | None, today: dict | None = Non
     weight = float(profile["weight_kg"])
     goal = Goal(profile["goal"])
     activity = ActivityLevel(profile["activity_level"])
-    target_weight = healthy_target_weight(profile["height_cm"], weight, goal)
+    # Prefer the user's explicit goal weight; fall back to a healthy-BMI estimate.
+    explicit_target = profile.get("target_weight_kg")
+    if explicit_target and float(explicit_target) > 0:
+        target_weight = round(float(explicit_target), 1)
+    else:
+        target_weight = healthy_target_weight(profile["height_cm"], weight, goal)
 
     if plan:
         calorie_target = int(plan["calorie_target"])

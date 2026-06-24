@@ -1,3 +1,5 @@
+from datetime import date, timedelta
+
 from app.agents.tools import dashboard_math as dm
 from app.domain import ActivityLevel, Goal
 
@@ -68,6 +70,34 @@ def test_summary_derives_targets_without_a_plan():
     assert s["protein_target_g"] > 0
     assert s["step_goal"] == 9000
     assert s["workout_target_days"] == 4
+
+
+def test_summary_prefers_explicit_target_weight():
+    s = dm.dashboard_summary(_profile(target_weight_kg=75.0), None)
+    assert s["target_weight_kg"] == 75.0
+    assert s["est_goal_weeks"] == 14          # |82-75| / 0.5 = 14 wks
+
+
+def test_streak_counts_consecutive_days_including_today():
+    today = date(2026, 6, 24)
+    active = {today, today - timedelta(days=1), today - timedelta(days=2)}
+    assert dm.streak_days(active, today) == 3
+
+
+def test_streak_breaks_on_a_gap_but_tolerates_no_log_today():
+    today = date(2026, 6, 24)
+    # nothing today, but yesterday + the day before → a live 2-day streak
+    active = {today - timedelta(days=1), today - timedelta(days=2)}
+    assert dm.streak_days(active, today) == 2
+    # a gap two days ago stops the count
+    gapped = {today, today - timedelta(days=2)}
+    assert dm.streak_days(gapped, today) == 1
+
+
+def test_workouts_done_in_week_window():
+    today = date(2026, 6, 24)
+    dates = {today, today - timedelta(days=3), today - timedelta(days=8)}  # last one is >7d
+    assert dm.workouts_done_in_week(dates, today) == 2
 
 
 def test_summary_reflects_todays_log():
