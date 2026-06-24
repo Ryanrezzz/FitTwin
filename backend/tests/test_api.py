@@ -122,6 +122,45 @@ def test_dashboard_summary_uses_active_plan_targets(client, onboarded):
     assert s["calories_remaining"] == s["calorie_target"]
 
 
+def test_logs_today_starts_empty_then_upserts(client, onboarded):
+    r = client.get("/api/v1/logs/today", headers=onboarded)
+    assert r.status_code == 200
+    assert r.json()["water_ml"] == 0 and r.json()["steps"] == 0
+
+    # partial update: only water — steps stay untouched
+    r = client.put("/api/v1/logs/today", headers=onboarded, json={"water_ml": 500})
+    assert r.status_code == 200 and r.json()["water_ml"] == 500
+    r = client.put("/api/v1/logs/today", headers=onboarded, json={"steps": 4000})
+    body = r.json()
+    assert body["water_ml"] == 500 and body["steps"] == 4000
+
+
+def test_dashboard_reflects_todays_log(client, onboarded):
+    client.post("/api/v1/plans/generate", headers=onboarded)
+    client.put(
+        "/api/v1/logs/today",
+        headers=onboarded,
+        json={"water_ml": 1500, "steps": 6000, "workout_done": True},
+    )
+    s = client.get("/api/v1/dashboard/summary", headers=onboarded).json()
+    assert s["water_ml"] == 1500
+    assert s["steps"] == 6000
+    assert s["streak_days"] == 1          # one active day (today)
+    assert s["workouts_done"] == 1        # one workout this week
+    assert s["workout_completion_pct"] == 25   # 1 of 4 planned days
+
+
+def test_dashboard_uses_explicit_target_weight(client, auth_headers):
+    profile = {
+        "name": "Ryan", "age": 24, "sex": "male", "height_cm": 178, "weight_kg": 82,
+        "goal": "lose", "target_weight_kg": 74, "activity_level": "moderate",
+        "experience": "beginner", "gym_type": "full_gym", "training_days": 4,
+    }
+    assert client.put("/api/v1/profile", json=profile, headers=auth_headers).status_code == 200
+    s = client.get("/api/v1/dashboard/summary", headers=auth_headers).json()
+    assert s["target_weight_kg"] == 74.0
+
+
 def test_chat_rejects_unknown_field(client, onboarded):
     r = client.post(
         "/api/v1/chat",
