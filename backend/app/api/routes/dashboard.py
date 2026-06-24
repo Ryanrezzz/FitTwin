@@ -16,7 +16,9 @@ from app.config import settings
 from app.deps import ensure_persistence, get_active_plan, get_current_profile
 from app.schemas.dashboard import AgentInfo, DashboardSummaryOut
 
-router = APIRouter(prefix="/dashboard", tags=["dashboard"], dependencies=[Depends(ensure_persistence)])
+router = APIRouter(
+    prefix="/dashboard", tags=["dashboard"], dependencies=[Depends(ensure_persistence)]
+)
 
 
 def _engine() -> str:

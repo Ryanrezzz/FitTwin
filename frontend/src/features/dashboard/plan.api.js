@@ -21,6 +21,18 @@ export function useGeneratePlan() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => api("/plans/generate", { method: "POST" }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: qk.activePlan }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: qk.activePlan });
+      queryClient.invalidateQueries({ queryKey: qk.dashboard });
+    },
+  });
+}
+
+/** GET /dashboard/summary — calculated overview cards + the hybrid agent map. */
+export function useDashboardSummary(enabled = true) {
+  return useQuery({
+    queryKey: qk.dashboard,
+    queryFn: () => api("/dashboard/summary"),
+    enabled,
   });
 }

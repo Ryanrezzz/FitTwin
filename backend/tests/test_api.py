@@ -92,6 +92,36 @@ def test_chat_plateau_adapts_against_stored_plan(client, onboarded):
     assert body["plan_version"] == 2
 
 
+def test_dashboard_summary_requires_auth(client):
+    assert client.get("/api/v1/dashboard/summary").status_code == 401
+
+
+def test_dashboard_summary_derives_cards_before_a_plan(client, onboarded):
+    r = client.get("/api/v1/dashboard/summary", headers=onboarded)
+    assert r.status_code == 200
+    s = r.json()
+    # targets are derived from the profile even with no plan generated yet
+    assert s["calorie_target"] > 0 and s["protein_target_g"] > 0
+    assert s["current_weight_kg"] == 82.0
+    assert s["target_weight_kg"] < 82.0          # "lose" → healthy-BMI target below current
+    assert s["step_goal"] == 9000                # moderate activity
+    assert s["workout_target_days"] == 4
+    # the hybrid coaching-engine map is surfaced for the UI
+    modes = {a["key"]: a["mode"] for a in s["agents"]}
+    assert modes["progress"] == "rule" and modes["safety"] == "rule"
+    assert modes["nutrition"] == "llm" and modes["workout"] == "hybrid"
+    assert s["engine"] == "rule"                 # LLM_PROVIDER=fake → rule-based
+
+
+def test_dashboard_summary_uses_active_plan_targets(client, onboarded):
+    plan = client.post("/api/v1/plans/generate", headers=onboarded).json()["final"]["nutrition"]
+    s = client.get("/api/v1/dashboard/summary", headers=onboarded).json()
+    assert s["calorie_target"] == plan["calories"]
+    assert s["protein_target_g"] == plan["macros"]["protein_g"]
+    # no logging yet → remaining equals target
+    assert s["calories_remaining"] == s["calorie_target"]
+
+
 def test_chat_rejects_unknown_field(client, onboarded):
     r = client.post(
         "/api/v1/chat",

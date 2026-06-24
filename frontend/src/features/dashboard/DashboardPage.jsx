@@ -1,11 +1,142 @@
 import { Navigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Flame, RefreshCw, Sparkles, Utensils } from "lucide-react";
+import { Cpu, Flame, RefreshCw, Sparkles, Utensils } from "lucide-react";
 import { Button, Card, Spinner } from "../../components/ui.jsx";
 import { useProfile } from "../profile/profile.api";
-import { useActivePlan, useGeneratePlan } from "./plan.api";
+import { useActivePlan, useDashboardSummary, useGeneratePlan } from "./plan.api";
 
 const spring = { type: "spring", stiffness: 420, damping: 32 };
+
+/** A compact overview tile: big number, optional unit, progress bar and subtext. */
+function StatCard({ label, value, unit, sub, accent = "var(--color-teal)", progress }) {
+  return (
+    <Card className="p-4">
+      <div className="text-[11px] font-semibold uppercase tracking-wide text-ink-soft">{label}</div>
+      <div className="mt-1 flex items-end gap-1">
+        <span className="stat-number text-3xl leading-none">{value}</span>
+        {unit && <span className="mb-0.5 text-sm font-semibold text-ink-soft">{unit}</span>}
+      </div>
+      {progress != null && (
+        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-line">
+          <div
+            className="h-full rounded-full transition-[width] duration-700"
+            style={{ width: `${Math.min(Math.max(progress, 0), 1) * 100}%`, background: accent }}
+          />
+        </div>
+      )}
+      {sub && <div className="mt-1.5 text-xs text-ink-soft">{sub}</div>}
+    </Card>
+  );
+}
+
+function OverviewCards({ s }) {
+  const consumed = s.calorie_target - s.calories_remaining;
+  const proteinDone = s.protein_target_g - s.protein_remaining_g;
+  const waterL = (s.water_ml / 1000).toFixed(1);
+  const waterGoalL = (s.water_goal_ml / 1000).toFixed(1);
+  return (
+    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <StatCard label="Current weight" value={s.current_weight_kg} unit="kg" sub={`Goal: ${s.goal}`} />
+      <StatCard
+        label="Target weight"
+        value={s.target_weight_kg}
+        unit="kg"
+        accent="var(--color-volt-press)"
+        sub={s.est_goal_weeks ? `~${s.est_goal_weeks} wks to go` : "You're in range"}
+      />
+      <StatCard
+        label="Calories left"
+        value={s.calories_remaining}
+        unit="kcal"
+        accent="var(--color-coral)"
+        progress={consumed / s.calorie_target}
+        sub={`of ${s.calorie_target} kcal`}
+      />
+      <StatCard
+        label="Protein left"
+        value={s.protein_remaining_g}
+        unit="g"
+        progress={proteinDone / s.protein_target_g}
+        sub={`of ${s.protein_target_g} g`}
+      />
+      <StatCard
+        label="Water"
+        value={waterL}
+        unit="L"
+        progress={s.water_ml / s.water_goal_ml}
+        sub={`goal ${waterGoalL} L`}
+      />
+      <StatCard
+        label="Steps"
+        value={s.steps.toLocaleString()}
+        accent="var(--color-volt-press)"
+        progress={s.steps / s.step_goal}
+        sub={`goal ${s.step_goal.toLocaleString()}`}
+      />
+      <StatCard
+        label="Workouts"
+        value={`${s.workout_completion_pct}%`}
+        accent="var(--color-volt-press)"
+        progress={s.workout_completion_pct / 100}
+        sub={`${s.workouts_done}/${s.workout_target_days} this week`}
+      />
+      <StatCard
+        label="Streak"
+        value={s.streak_days}
+        unit="days"
+        accent="var(--color-coral)"
+        sub={s.streak_days ? "🔥 keep it going" : "Log today to start"}
+      />
+    </div>
+  );
+}
+
+const MODE_BADGE = {
+  rule: { label: "Rule-based", cls: "bg-teal/15 text-teal" },
+  llm: { label: "LLM", cls: "bg-volt/30 text-ink" },
+  hybrid: { label: "Hybrid", cls: "bg-amber/20 text-amber" },
+};
+const ENGINE_LABEL = {
+  rule: "Rule-based (offline)",
+  gemini: "Gemini",
+  openai: "OpenAI",
+  local: "Local · Ollama",
+};
+
+/** Surfaces the hybrid decision: which agents are plain Python vs LLM-powered. */
+function CoachingEngine({ engine, agents }) {
+  return (
+    <Card>
+      <div className="flex items-center justify-between">
+        <h3 className="flex items-center gap-2 font-display text-lg font-bold">
+          <Cpu className="size-4 text-volt-press" /> Coaching engine
+        </h3>
+        <span className="rounded-full bg-ink/5 px-2.5 py-1 text-xs font-medium text-ink-soft">
+          model: {ENGINE_LABEL[engine] ?? engine}
+        </span>
+      </div>
+      <p className="mt-1 text-sm text-ink-soft">
+        Each agent runs as plain Python rules, an LLM, or a hybrid of both.
+      </p>
+      <div className="mt-4 space-y-2">
+        {agents.map((a) => {
+          const m = MODE_BADGE[a.mode] ?? MODE_BADGE.rule;
+          return (
+            <div key={a.key} className="flex items-start justify-between gap-3 rounded-[12px] border border-line p-3">
+              <div>
+                <div className="font-semibold">{a.name}</div>
+                <div className="text-xs text-ink-soft">{a.blurb}</div>
+              </div>
+              <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${m.cls}`}>
+                {m.label}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
 
 function MacroSplit({ macros }) {
   const p = macros.protein_g ?? 0;
@@ -126,6 +257,7 @@ function MealsCard({ nutrition }) {
 export default function DashboardPage() {
   const { data: profile, isLoading: loadingProfile } = useProfile();
   const { data: plan, isLoading: loadingPlan } = useActivePlan();
+  const { data: summary } = useDashboardSummary(!!profile);
   const generate = useGeneratePlan();
 
   if (loadingProfile) return <Spinner label="Loading…" />;
@@ -175,6 +307,8 @@ export default function DashboardPage() {
         </Button>
       </div>
 
+      {summary && <OverviewCards s={summary} />}
+
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <TwinHero name={profile.name} goal={profile.goal} calories={plan.calorie_target} />
@@ -191,6 +325,8 @@ export default function DashboardPage() {
         <MealsCard nutrition={plan.nutrition ?? {}} />
         <WorkoutCard workout={plan.workout ?? {}} />
       </div>
+
+      {summary && <CoachingEngine engine={summary.engine} agents={summary.agents} />}
     </motion.div>
   );
 }

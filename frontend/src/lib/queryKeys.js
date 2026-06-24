@@ -4,4 +4,5 @@ export const qk = {
   profile: ["profile"],
   activePlan: ["plan", "active"],
   plan: (id) => ["plan", id],
+  dashboard: ["dashboard", "summary"],
 };

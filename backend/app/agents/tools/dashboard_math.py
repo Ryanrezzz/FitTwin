@@ -97,12 +97,13 @@ def dashboard_summary(profile: dict, plan: dict | None, today: dict | None = Non
 
     workout_target_days = int(profile.get("training_days", 0) or 0)
     workouts_done = int(today.get("workouts_done_week", 0) or 0)
+    rate = profile.get("rate_kg_per_week", 0.5)
 
     return {
         "goal": goal.value,
         "current_weight_kg": round(weight, 1),
         "target_weight_kg": target_weight,
-        "est_goal_weeks": weeks_to_goal(weight, target_weight, profile.get("rate_kg_per_week", 0.5)),
+        "est_goal_weeks": weeks_to_goal(weight, target_weight, rate),
         "calorie_target": calorie_target,
         "calories_remaining": max(calorie_target - cals_today, 0),
         "protein_target_g": protein_target,
