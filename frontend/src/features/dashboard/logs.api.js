@@ -11,7 +11,16 @@ export function useTodayLog(enabled = true) {
   });
 }
 
-/** PUT /logs/today — partial update; refreshes today's log + the dashboard cards. */
+/** GET /logs/history — recent logged days for the activity calendar. */
+export function useLogHistory(days = 7, enabled = true) {
+  return useQuery({
+    queryKey: qk.logHistory,
+    queryFn: () => api(`/logs/history?days=${days}`),
+    enabled,
+  });
+}
+
+/** PUT /logs/today — partial update; refreshes today's log + dashboard + history. */
 export function useUpdateLog() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -19,6 +28,7 @@ export function useUpdateLog() {
     onSuccess: (data) => {
       queryClient.setQueryData(qk.todayLog, data);
       queryClient.invalidateQueries({ queryKey: qk.dashboard });
+      queryClient.invalidateQueries({ queryKey: qk.logHistory });
     },
   });
 }

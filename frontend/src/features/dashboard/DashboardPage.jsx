@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { animate, motion, useReducedMotion } from "framer-motion";
-import { Droplets, Dumbbell, Flame, Footprints, Plus, RefreshCw, Sparkles, Utensils } from "lucide-react";
-import { Button, Card, Input, Spinner } from "../../components/ui.jsx";
+import { Check, Droplets, Dumbbell, Flame, Footprints, Plus, RefreshCw, Sparkles, Utensils } from "lucide-react";
+import { Button, Card, Input, Spinner, cn } from "../../components/ui.jsx";
 import { useProfile } from "../profile/profile.api";
 import { useActivePlan, useDashboardSummary, useGeneratePlan } from "./plan.api";
-import { useTodayLog, useUpdateLog } from "./logs.api";
+import { useLogHistory, useTodayLog, useUpdateLog } from "./logs.api";
 
 const spring = { type: "spring", stiffness: 420, damping: 32 };
 
@@ -126,6 +126,66 @@ function OverviewCards({ s }) {
         sub={s.streak_days ? "🔥 keep it going" : "Log today to start"}
       />
     </div>
+  );
+}
+
+const DOW = ["S", "M", "T", "W", "T", "F", "S"]; // JS getDay(): Sun=0
+const isoLocal = (d) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+/** Mini activity calendar — the last 7 days. Days roll over automatically by date. */
+function WeekStrip({ streak = 0 }) {
+  const { data: history = [] } = useLogHistory(7);
+  const byDate = Object.fromEntries((history ?? []).map((h) => [h.date, h]));
+  const todayIso = isoLocal(new Date());
+  const days = [...Array(7)].map((_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i)); // oldest → today
+    const iso = isoLocal(d);
+    const log = byDate[iso];
+    return {
+      iso,
+      dow: DOW[d.getDay()],
+      num: d.getDate(),
+      workout: !!log?.workout_done,
+      active: !!(log && (log.workout_done || log.steps || log.water_ml || log.calories)),
+      today: iso === todayIso,
+    };
+  });
+  return (
+    <Card>
+      <div className="flex items-center justify-between">
+        <h3 className="flex items-center gap-2 font-display text-lg font-bold">
+          <Flame className="size-4 text-coral" /> This week
+        </h3>
+        <span className="rounded-full bg-coral/15 px-2.5 py-1 text-xs font-semibold text-coral">
+          🔥 {streak}-day streak
+        </span>
+      </div>
+      <div className="mt-4 grid grid-cols-7 gap-2">
+        {days.map((d) => (
+          <div key={d.iso} className="flex flex-col items-center gap-1">
+            <span className="text-[11px] font-medium text-ink-soft">{d.dow}</span>
+            <div
+              className={cn(
+                "grid size-10 place-items-center rounded-full border text-sm font-semibold transition",
+                d.workout
+                  ? "border-volt-press bg-volt text-ink"
+                  : d.active
+                    ? "border-teal/40 bg-teal/15 text-ink"
+                    : "border-line bg-bone text-ink-soft",
+                d.today && "ring-2 ring-volt ring-offset-2 ring-offset-paper",
+              )}
+            >
+              {d.workout ? <Check className="size-4" /> : d.num}
+            </div>
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 text-xs text-ink-soft">
+        Days roll over automatically — just log as you go. ✓ = workout done · filled = active day.
+      </p>
+    </Card>
   );
 }
 
@@ -337,46 +397,113 @@ const MEAL_TINT = {
   Snack: "from-volt/40",
 };
 
+// Muscle groups a split day trains, and a best-guess target per exercise name.
+const FOCUS_MUSCLES = {
+  push: "Chest · Shoulders · Triceps",
+  pull: "Back · Biceps",
+  legs: "Quads · Hamstrings · Glutes · Calves",
+  upper: "Chest · Back · Shoulders · Arms",
+  lower: "Quads · Hamstrings · Glutes",
+  full: "Full body",
+};
+const EX_MUSCLE = [
+  [/squat|leg press|lunge|split squat/i, "Quads"],
+  [/deadlift|rdl|romanian|hip thrust|glute|good-?morning|bridge/i, "Posterior"],
+  [/row|pulldown|pull-?up|lat|inverted/i, "Back"],
+  [/overhead|ohp|pike|shoulder/i, "Shoulders"],
+  [/bench|push-?up|chest|incline|dip|press/i, "Chest"],
+  [/curl/i, "Biceps"],
+  [/triceps|pushdown/i, "Triceps"],
+  [/calf/i, "Calves"],
+  [/plank|core|superman/i, "Core"],
+];
+const exMuscle = (name = "") => {
+  for (const [re, m] of EX_MUSCLE) if (re.test(name)) return m;
+  return "Compound";
+};
+
+/** Pro-style program view: pick a day, see its focus + target muscles + exercises. */
 function WorkoutCard({ workout }) {
+  const sessions = workout.sessions ?? [];
+  const [active, setActive] = useState(0);
+  if (sessions.length === 0) return null;
+  const idx = Math.min(active, sessions.length - 1);
+  const s = sessions[idx];
+  const focus = (s.focus || "").toLowerCase();
+  const note = s.exercises?.[0]?.load_guidance;
+
   return (
     <Card>
-      <h3 className="flex items-center gap-2 font-display text-lg font-bold">
-        <Dumbbell className="size-4 text-volt-press" /> Training
-      </h3>
-      <p className="text-sm text-ink-soft">{workout.split}</p>
-      <div className="mt-4 space-y-3">
-        {(workout.sessions ?? []).map((s, i) => (
-          <div key={i} className="overflow-hidden rounded-[12px] border border-line">
-            <div className="flex items-center justify-between bg-gradient-to-r from-volt/20 to-transparent px-3 py-2">
-              <span className="flex items-center gap-2 font-semibold">
-                <Dumbbell className="size-4 text-volt-press" /> {s.day}
-              </span>
-              <span className="rounded-full bg-paper px-2 py-0.5 text-xs font-medium text-ink-soft">
-                {s.focus}
-              </span>
-            </div>
-            <ul className="space-y-1 p-3">
-              {(s.exercises ?? []).map((ex, j) => (
-                <motion.li
-                  key={j}
-                  className="flex items-center justify-between rounded-md px-1.5 py-1 text-sm hover:bg-ink/5"
-                  initial={{ opacity: 0, x: -8 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: j * 0.05, ...spring }}
-                >
-                  <span className="flex items-center gap-2">
-                    <span className="size-1.5 rounded-full bg-volt-press" />
-                    {ex.name}
-                  </span>
-                  <span className="font-medium text-ink-soft">
-                    {ex.sets} × {ex.reps}
-                  </span>
-                </motion.li>
-              ))}
-            </ul>
-          </div>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="flex items-center gap-2 font-display text-lg font-bold">
+          <Dumbbell className="size-4 text-volt-press" /> Training
+        </h3>
+        <span className="rounded-full bg-ink/5 px-2.5 py-1 text-xs font-medium text-ink-soft">
+          {workout.split}
+        </span>
+      </div>
+
+      {/* day selector */}
+      <div className="mt-3 flex flex-wrap gap-2">
+        {sessions.map((sess, i) => (
+          <button
+            key={i}
+            type="button"
+            onClick={() => setActive(i)}
+            className={cn(
+              "rounded-full px-3 py-1.5 text-sm font-medium transition active:scale-95",
+              i === idx
+                ? "bg-volt text-ink"
+                : "border border-line bg-bone text-ink-soft hover:border-ink/30",
+            )}
+          >
+            {sess.day} · {sess.focus}
+          </button>
         ))}
       </div>
+
+      {/* selected day */}
+      <motion.div
+        key={idx}
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={spring}
+        className="mt-4"
+      >
+        <div className="mb-2 flex flex-wrap items-baseline gap-x-2">
+          <span className="font-display text-lg font-bold">{s.focus}</span>
+          <span className="text-sm text-ink-soft">{FOCUS_MUSCLES[focus] ?? ""}</span>
+        </div>
+        <ul className="space-y-1.5">
+          {(s.exercises ?? []).map((ex, j) => (
+            <motion.li
+              key={j}
+              className="flex items-center justify-between gap-2 rounded-[10px] border border-line px-3 py-2"
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: j * 0.05, ...spring }}
+            >
+              <span className="flex min-w-0 items-center gap-2.5">
+                <span className="grid size-7 shrink-0 place-items-center rounded-md bg-volt/20 text-xs font-bold text-ink">
+                  {j + 1}
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate font-medium">{ex.name}</span>
+                  <span className="text-xs text-ink-soft">{exMuscle(ex.name)}</span>
+                </span>
+              </span>
+              <span className="shrink-0 rounded-full bg-ink/5 px-2.5 py-1 text-sm font-semibold tabular-nums">
+                {ex.sets} × {ex.reps}
+              </span>
+            </motion.li>
+          ))}
+        </ul>
+        {note && (
+          <p className="mt-3 flex items-start gap-1.5 text-xs text-ink-soft">
+            <span>📈</span> {note}
+          </p>
+        )}
+      </motion.div>
     </Card>
   );
 }
@@ -473,6 +600,8 @@ export default function DashboardPage() {
       </div>
 
       {summary && <OverviewCards s={summary} />}
+
+      <WeekStrip streak={summary?.streak_days ?? 0} />
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
