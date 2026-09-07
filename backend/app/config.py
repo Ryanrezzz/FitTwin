@@ -1,7 +1,10 @@
 """Application settings, env-driven (12-factor)."""
 from __future__ import annotations
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+DEFAULT_JWT_SECRET = "change-me-to-a-long-random-string"
 
 
 class Settings(BaseSettings):
@@ -26,8 +29,17 @@ class Settings(BaseSettings):
     mongo_timeout_ms: int = 2000
 
     # ── Security (JWT + password hashing) ──
-    jwt_secret: str = "change-me-to-a-long-random-string"
+    # ── Google Sign-In ──
+    # The OAuth 2.0 Web client id from Google Cloud Console. Empty disables the
+    # feature cleanly (the endpoint returns 503) rather than half-enabling it.
+    # It is NOT a secret — it ships to the browser — so it has no prod guard.
+    google_client_id: str = ""
+
+    jwt_secret: str = DEFAULT_JWT_SECRET
     jwt_algorithm: str = "HS256"
+    # Auth rate limiting. Disabled in the test suite (which logs in constantly);
+    # must stay on everywhere else.
+    rate_limit_enabled: bool = True
     jwt_access_ttl_min: int = 15
     jwt_refresh_ttl_days: int = 7
 
@@ -36,6 +48,11 @@ class Settings(BaseSettings):
     llm_provider: str = "fake"          # fake | gemini | openai | ollama
     llm_model: str = "gemini-2.5-flash"
     llm_temperature: float = 0.0
+    # Reproducibility. Some models (gpt-5.5, gpt-5.6-*) reject any temperature but
+    # the default 1, so temperature alone can't pin them down — LangChain silently
+    # drops it. `seed` is what actually makes those models repeatable: same profile
+    # in => same plan out. Set to None for deliberate variety.
+    llm_seed: int | None = 42
     gemini_api_key: str = ""
     openai_api_key: str = ""
     ollama_base_url: str = "http://localhost:11434"
@@ -43,6 +60,31 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def is_prod(self) -> bool:
+        return self.app_env.lower() in ("prod", "production", "staging")
+
+    @model_validator(mode="after")
+    def _refuse_insecure_prod(self) -> Settings:
+        """Fail fast rather than boot a live app with forgeable sessions.
+
+        The default JWT secret is public (it ships in .env.example), so anyone
+        could mint an admin token against a deployment that kept it. In dev we
+        allow it for convenience; outside dev, refusing to start is the only
+        safe behaviour. A wildcard CORS origin with credentials is refused for
+        the same reason.
+        """
+        if not self.is_prod:
+            return self
+        if self.jwt_secret == DEFAULT_JWT_SECRET or len(self.jwt_secret) < 32:
+            raise ValueError(
+                "JWT_SECRET is unset, default, or too short. Set a random 32+ char "
+                f"secret before running with APP_ENV={self.app_env}."
+            )
+        if "*" in self.cors_origin_list:
+            raise ValueError("CORS_ORIGINS must not be '*' when credentials are allowed.")
+        return self
 
 
 settings = Settings()

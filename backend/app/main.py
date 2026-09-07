@@ -49,6 +49,32 @@ app.add_middleware(
 )
 
 
+# Baseline hardening headers. The API serves JSON to a separate SPA origin, so
+# it should never be framed, sniffed, or leak URLs via Referer; HSTS is only
+# meaningful (and only sent) once we are actually behind TLS.
+_SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Cross-Origin-Resource-Policy": "same-origin",
+    "Permissions-Policy": "geolocation=(), microphone=(), camera=()",
+    "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
+}
+
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    response = await call_next(request)
+    for header, value in _SECURITY_HEADERS.items():
+        response.headers.setdefault(header, value)
+    if settings.is_prod:
+        response.headers.setdefault(
+            "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+        )
+    return response
+
+
 @app.middleware("http")
 async def request_id_middleware(request: Request, call_next):
     """Mint/propagate a request id and echo it on the response for tracing."""
@@ -59,11 +85,22 @@ async def request_id_middleware(request: Request, call_next):
     return response
 
 
-def _envelope(request: Request, status_code: int, code: str, message: str) -> JSONResponse:
+def _envelope(
+    request: Request,
+    status_code: int,
+    code: str,
+    message: str,
+    headers: dict[str, str] | None = None,
+) -> JSONResponse:
+    """Normalized error body. `headers` must be forwarded: an HTTPException's
+    headers carry protocol-level meaning (`WWW-Authenticate` on a 401, a
+    `Retry-After` hint on a 429) and silently dropping them leaves the client
+    unable to respond correctly."""
     request_id = getattr(request.state, "request_id", None)
     return JSONResponse(
         status_code=status_code,
         content={"error": {"code": code, "message": message, "request_id": request_id}},
+        headers=headers or None,
     )
 
 
@@ -74,7 +111,10 @@ async def validation_handler(request: Request, exc: RequestValidationError):
 
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
-    return _envelope(request, exc.status_code, "HTTP_ERROR", str(exc.detail))
+    return _envelope(
+        request, exc.status_code, "HTTP_ERROR", str(exc.detail),
+        headers=getattr(exc, "headers", None),
+    )
 
 
 @app.exception_handler(AuthError)
