@@ -1,11 +1,24 @@
 import { useEffect, useRef, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { animate, motion, useReducedMotion } from "framer-motion";
-import { Check, Droplets, Dumbbell, Flame, Footprints, Plus, RefreshCw, Sparkles, Utensils } from "lucide-react";
+import {
+  Check,
+  Droplets,
+  Dumbbell,
+  Flame,
+  Footprints,
+  Plus,
+  RefreshCw,
+  Sparkles,
+  TrendingDown,
+  Utensils,
+} from "lucide-react";
 import { Button, Card, Input, Spinner, cn } from "../../components/ui.jsx";
 import { useProfile } from "../profile/profile.api";
 import { useActivePlan, useDashboardSummary, useGeneratePlan } from "./plan.api";
 import { useLogHistory, useTodayLog, useUpdateLog } from "./logs.api";
+import { useResetRotations, useRotateMeal } from "./meals.api";
+import { useLogWeight, useWeightSeries } from "./progress.api";
 
 const spring = { type: "spring", stiffness: 420, damping: 32 };
 
@@ -38,20 +51,26 @@ function CountUp({ value = 0, decimals = 0 }) {
   );
 }
 
-/** A compact overview tile: animated number, optional progress bar and subtext. */
+/** An overview tile.
+ *
+ * Deliberately dense: all eight metrics matter to a daily user, so the fix for
+ * "the whole first screen is statistics" is a shorter tile, not fewer of them.
+ * Trimmed padding/type takes each tile from ~165px to ~95px — the same eight
+ * numbers in roughly half a phone screen.
+ */
 function StatCard({ label, value, decimals = 0, unit, suffix, sub, accent = "var(--color-teal)", progress }) {
   return (
-    <Card className="p-4">
-      <div className="text-[11px] font-semibold uppercase tracking-wide text-ink-soft">{label}</div>
-      <div className="mt-1 flex items-end gap-1">
-        <span className="stat-number text-3xl leading-none">
+    <Card className="p-3">
+      <div className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">{label}</div>
+      <div className="mt-0.5 flex items-end gap-1">
+        <span className="stat-number text-2xl leading-none">
           <CountUp value={value} decimals={decimals} />
           {suffix}
         </span>
-        {unit && <span className="mb-0.5 text-sm font-semibold text-ink-soft">{unit}</span>}
+        {unit && <span className="mb-px text-xs font-semibold text-ink-soft">{unit}</span>}
       </div>
       {progress != null && (
-        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-line">
+        <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-line">
           <motion.div
             className="h-full rounded-full"
             style={{ background: accent }}
@@ -61,7 +80,7 @@ function StatCard({ label, value, decimals = 0, unit, suffix, sub, accent = "var
           />
         </div>
       )}
-      {sub && <div className="mt-1.5 text-xs text-ink-soft">{sub}</div>}
+      {sub && <div className="mt-1 truncate text-[11px] text-ink-soft">{sub}</div>}
     </Card>
   );
 }
@@ -121,7 +140,7 @@ function OverviewCards({ s }) {
       <StatCard
         label="Streak"
         value={s.streak_days}
-        unit="days"
+        unit={s.streak_days === 1 ? "day" : "days"}
         accent="var(--color-coral)"
         sub={s.streak_days ? "🔥 keep it going" : "Log today to start"}
       />
@@ -351,31 +370,65 @@ function MacroSplit({ macros }) {
   );
 }
 
-function TwinHero({ name, goal, calories }) {
+/** The page header: who this is, and what today's target is.
+ *
+ * This used to be a tall card sitting *below* the logging cards, which left the
+ * greeting stranded in the middle of a phone screen — it reads as a mistake,
+ * because a name is a header, not a mid-page element. Folding the plan chip and
+ * the Regenerate action in here keeps the name first without pushing the day's
+ * inputs below the fold.
+ */
+function TwinHeader({ name, goal, calories, version, degraded, onRegenerate, regenerating }) {
   return (
     <Card className="relative overflow-hidden">
-      <div className="absolute -right-10 -top-10 size-48 rounded-full bg-volt/40 blur-2xl" />
-      <div className="absolute right-6 bottom-0 size-28 rounded-full bg-teal/30 blur-2xl" />
-      <div className="relative">
-        <div className="flex items-center gap-2 text-sm font-medium text-ink-soft">
-          <Sparkles className="size-4 text-volt-press" /> Your digital twin
+      <div className="pointer-events-none absolute -right-12 -top-12 size-44 rounded-full bg-volt/40 blur-2xl" />
+      <div className="pointer-events-none absolute -right-4 bottom--6 size-24 rounded-full bg-teal/25 blur-2xl" />
+
+      <div className="relative flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-xs font-medium text-ink-soft">
+            <Sparkles className="size-3.5 text-volt-press" /> Your digital twin
+          </div>
+          <h1 className="mt-1 font-display text-3xl font-extrabold leading-tight tracking-tight">
+            Hey {name || "athlete"} 👋
+          </h1>
+          <p className="mt-1 text-sm text-ink-soft">
+            Goal <span className="font-semibold text-ink">{goal}</span>
+            {" · "}
+            <span className="stat-number text-ink">
+              <CountUp value={calories} />
+            </span>{" "}
+            kcal / day
+          </p>
         </div>
-        <h2 className="mt-1 font-display text-3xl font-extrabold tracking-tight">
-          Hey {name || "athlete"} 👋
-        </h2>
-        <p className="mt-1 text-ink-soft">
-          Goal: <span className="font-semibold text-ink">{goal}</span>
-        </p>
-        <div className="mt-5 flex items-end gap-2">
-          <span className="stat-number text-5xl">
-            <CountUp value={calories} />
+
+        {/* One row on a phone (stacking these wasted ~50px of dead space);
+            top-right on wider screens. */}
+        <div className="flex w-full shrink-0 flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+          <span className="rounded-full bg-ink/5 px-2.5 py-1 text-xs font-medium text-ink-soft">
+            Plan v{version}
           </span>
-          <span className="mb-1 text-sm font-semibold text-ink-soft">kcal / day target</span>
+          {degraded && (
+            <span className="rounded-full bg-amber/20 px-2.5 py-1 text-xs font-medium text-amber">
+              fallback
+            </span>
+          )}
+          {/* Rebuilding discards the current plan, so it stays a quiet utility. */}
+          <Button
+            variant="ghost"
+            className="ml-auto px-2.5 py-1.5 text-xs sm:ml-0"
+            loading={regenerating}
+            onClick={onRegenerate}
+            title="Rebuild your plan from your current profile"
+          >
+            <RefreshCw className="size-3.5" /> Regenerate plan
+          </Button>
         </div>
       </div>
     </Card>
   );
 }
+
 
 // Pick a food emoji from the meal's main item so each card reads like a dish.
 const FOOD_EMOJI = [
@@ -390,11 +443,13 @@ const foodEmoji = (items = []) => {
   for (const [re, emoji] of FOOD_EMOJI) if (re.test(text)) return emoji;
   return "🍴";
 };
+// Keyed on the backend's `slot`, not the display name — the label changed once
+// ("Snack" -> "Evening Snack") and a name-keyed map silently lost its colour.
 const MEAL_TINT = {
-  Breakfast: "from-amber/30",
-  Lunch: "from-teal/30",
-  Dinner: "from-coral/30",
-  Snack: "from-volt/40",
+  breakfast: "from-amber/30",
+  lunch: "from-teal/30",
+  snack: "from-volt/40",
+  dinner: "from-coral/30",
 };
 
 // Muscle groups a split day trains, and a best-guess target per exercise name.
@@ -510,48 +565,280 @@ function WorkoutCard({ workout }) {
 
 const WEEKDAY = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-function MealsCard({ meals = [] }) {
-  if (meals.length === 0) return null;
-  const today = WEEKDAY[(new Date().getDay() + 6) % 7]; // JS Sun=0 → Mon-first
+/** Bodyweight trend + today's weigh-in.
+ *
+ * Until this existed, "current weight" was the number typed at onboarding and
+ * could never change, so the weight card, weeks-to-goal and plateau detection
+ * were all reading a constant.
+ */
+function WeightSparkline({ points, goalKg }) {
+  if (points.length < 2) return null;
+  const w = 260;
+  const h = 64;
+  const pad = 6;
+  const values = points.map((p) => p.weight_kg);
+  const lo = Math.min(...values, goalKg ?? Infinity);
+  const hi = Math.max(...values, goalKg ?? -Infinity);
+  const span = hi - lo || 1;
+  const x = (i) => pad + (i * (w - pad * 2)) / (points.length - 1);
+  const y = (v) => pad + (1 - (v - lo) / span) * (h - pad * 2);
+  const line = points.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(p.weight_kg).toFixed(1)}`).join(" ");
+  const area = `${line} L${x(points.length - 1).toFixed(1)},${h - pad} L${x(0).toFixed(1)},${h - pad} Z`;
+  const last = points[points.length - 1];
+
+  return (
+    <svg
+      viewBox={`0 0 ${w} ${h}`}
+      className="mt-3 w-full"
+      role="img"
+      aria-label={`Weight trend, latest ${last.weight_kg} kg`}
+    >
+      <path d={area} fill="var(--color-teal)" opacity="0.12" />
+      <path d={line} fill="none" stroke="var(--color-teal)" strokeWidth="2" strokeLinejoin="round" />
+      <circle cx={x(points.length - 1)} cy={y(last.weight_kg)} r="3.5" fill="var(--color-teal)" />
+    </svg>
+  );
+}
+
+function WeightCard({ goalKg }) {
+  const { data, isLoading } = useWeightSeries();
+  const logWeight = useLogWeight();
+  const [value, setValue] = useState("");
+
+  const entries = data?.entries ?? [];
+  // API returns newest-first; a chart reads oldest-left.
+  const points = [...entries].reverse();
+  const change = data?.change_kg;
+
+  const save = () => {
+    const kg = Number(value);
+    if (!kg || kg <= 20 || kg >= 400) return;
+    logWeight.mutate(kg, { onSuccess: () => setValue("") });
+  };
+
   return (
     <Card>
-      <div className="flex items-center justify-between">
+      <h3 className="flex items-center gap-2 font-display text-lg font-bold">
+        <TrendingDown className="size-4 text-teal" /> Weight
+      </h3>
+
+      {isLoading ? (
+        <div className="mt-4"><Spinner label="Loading trend…" /></div>
+      ) : entries.length === 0 ? (
+        <p className="mt-1 text-sm text-ink-soft">
+          Log your first weigh-in to start tracking progress toward your goal.
+        </p>
+      ) : (
+        <>
+          <div className="mt-2 flex items-baseline gap-3">
+            <span className="stat-number text-3xl">{data.latest_kg}</span>
+            <span className="text-sm text-ink-soft">kg</span>
+            {change != null && change !== 0 && (
+              <span
+                className={cn(
+                  "rounded-full px-2 py-0.5 text-xs font-semibold",
+                  change < 0 ? "bg-teal/15 text-teal" : "bg-coral/15 text-coral",
+                )}
+              >
+                {change > 0 ? "+" : ""}
+                {change} kg
+              </span>
+            )}
+            {goalKg != null && (
+              <span className="ml-auto text-xs text-ink-soft">goal {goalKg} kg</span>
+            )}
+          </div>
+          <WeightSparkline points={points} goalKg={goalKg} />
+          <p className="text-xs text-ink-soft">
+            {data.days_tracked} weigh-in{data.days_tracked === 1 ? "" : "s"} recorded
+          </p>
+        </>
+      )}
+
+      <div className="mt-4 flex gap-2">
+        <Input
+          type="number"
+          inputMode="decimal"
+          step="0.1"
+          placeholder="today's weight (kg)"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && save()}
+          aria-label="Today's weight in kilograms"
+        />
+        <Button onClick={save} loading={logWeight.isPending} disabled={!value}>
+          Log
+        </Button>
+      </div>
+      {logWeight.isError && (
+        <p className="mt-2 text-xs text-coral">
+          Could not save that weight. Enter a value between 20 and 400 kg.
+        </p>
+      )}
+    </Card>
+  );
+}
+
+function MealRow({ meal, index, onRotate, rotating }) {
+  const items = meal.items ?? [];
+  return (
+    <motion.div
+      className="rounded-[12px] border border-line p-3"
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.06, ...spring }}
+    >
+      <div className="flex gap-3">
+        <div
+          className={`grid size-12 shrink-0 place-items-center rounded-[10px] bg-gradient-to-br to-transparent text-2xl ${
+            MEAL_TINT[meal.slot] ?? "from-volt/30"
+          }`}
+        >
+          {foodEmoji(items)}
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="text-xs font-semibold uppercase tracking-wide text-ink-soft">
+              {meal.name}
+            </span>
+            <span className="stat-number shrink-0 text-sm">
+              {meal.kcal} kcal · {meal.protein_g}g P
+            </span>
+          </div>
+
+          {meal.dish && <p className="mt-0.5 font-semibold leading-snug">{meal.dish}</p>}
+
+          {/* Portions wrap as chips instead of truncating — they are the actual
+              instruction ("dal 60g", "3 x roti"), so clipping them loses the point. */}
+          <ul className="mt-2 flex flex-wrap gap-1.5">
+            {items.map((item, i) => (
+              <li
+                key={i}
+                className="rounded-full bg-ink/[.04] px-2 py-0.5 text-xs text-ink-soft"
+              >
+                {item}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {onRotate && (
+          <button
+            type="button"
+            onClick={() => onRotate(meal.slot)}
+            disabled={rotating}
+            title={`Swap ${meal.name.toLowerCase()} for a different dish`}
+            aria-label={`Swap ${meal.name} for a different dish`}
+            className="grid size-9 shrink-0 place-items-center self-start rounded-[10px] border border-line
+                       text-ink-soft transition hover:border-volt-press hover:text-ink
+                       disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-volt"
+          >
+            <RefreshCw className={cn("size-4", rotating && "animate-spin")} />
+          </button>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
+function MealsCard({ meals = [], canRotate = false }) {
+  const rotate = useRotateMeal();
+  const reset = useResetRotations();
+  const [pending, setPending] = useState(null);
+
+  if (meals.length === 0) return null;
+  const today = WEEKDAY[(new Date().getDay() + 6) % 7]; // JS Sun=0 -> Mon-first
+  const totalKcal = meals.reduce((sum, m) => sum + (m.kcal ?? 0), 0);
+  const totalProtein = meals.reduce((sum, m) => sum + (m.protein_g ?? 0), 0);
+
+  // Only offer rotation when the meals came from the catalog (they carry a
+  // `slot`); a legacy plan's meal_plan has no slot to rotate.
+  const rotatable = canRotate && meals.every((m) => m.slot);
+
+  async function handleRotate(slot) {
+    setPending(slot);
+    try {
+      await rotate.mutateAsync(slot);
+    } finally {
+      setPending(null);
+    }
+  }
+
+  return (
+    <Card>
+      <div className="flex items-center justify-between gap-3">
         <h3 className="flex items-center gap-2 font-display text-lg font-bold">
           <Utensils className="size-4 text-teal" /> Today's meals
         </h3>
-        <span className="rounded-full bg-teal/15 px-2.5 py-1 text-xs font-semibold text-teal">
-          {today}
-        </span>
+        <div className="flex items-center gap-2">
+          {rotatable && (
+            <button
+              type="button"
+              onClick={() => reset.mutate()}
+              disabled={reset.isPending}
+              className="text-xs font-semibold text-ink-soft underline-offset-2 hover:text-ink hover:underline
+                         disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-volt"
+            >
+              Reset
+            </button>
+          )}
+          <span className="rounded-full bg-teal/15 px-2.5 py-1 text-xs font-semibold text-teal">
+            {today}
+          </span>
+        </div>
       </div>
+
+      {rotatable && (
+        <p className="mt-1 text-xs text-ink-soft">
+          Not in the mood for something? Swap any meal — the day stays on target.
+        </p>
+      )}
+
       <div className="mt-4 space-y-3">
         {meals.map((m, i) => (
-          <motion.div
-            key={i}
-            className="flex gap-3 rounded-[12px] border border-line p-3"
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.06, ...spring }}
-          >
-            <div
-              className={`grid size-12 shrink-0 place-items-center rounded-[10px] bg-gradient-to-br to-transparent text-2xl ${
-                MEAL_TINT[m.name] ?? "from-volt/30"
-              }`}
-            >
-              {foodEmoji(m.items)}
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center justify-between">
-                <span className="font-semibold">{m.name}</span>
-                <span className="text-sm text-ink-soft">
-                  {m.kcal} kcal · {m.protein_g}g P
-                </span>
-              </div>
-              <p className="mt-0.5 truncate text-sm capitalize text-ink-soft">
-                {(m.items ?? []).join(", ")}
-              </p>
-            </div>
-          </motion.div>
+          <MealRow
+            key={m.slot ?? i}
+            meal={m}
+            index={i}
+            onRotate={rotatable ? handleRotate : null}
+            rotating={pending === m.slot}
+          />
         ))}
+      </div>
+
+      <div className="mt-4 flex items-center justify-between border-t border-line pt-3 text-sm">
+        <span className="text-ink-soft">Day total</span>
+        <span className="stat-number">
+          {totalKcal} kcal · {totalProtein}g protein
+        </span>
+      </div>
+    </Card>
+  );
+}
+
+/** Shown only while a new user's day is completely empty.
+ *
+ * A freshly-generated plan renders every tile as a zero, which reads as "this
+ * app is broken" rather than "you haven't started yet". This says which single
+ * action turns the zeros into progress, then disappears for good once anything
+ * is logged.
+ */
+function FirstRunNudge({ s }) {
+  const untouched =
+    !s.water_ml && !s.steps && !s.workouts_done && !s.streak_days &&
+    s.calories_remaining === s.calorie_target;
+  if (!untouched) return null;
+  return (
+    <Card className="border-volt-press/40 bg-volt/[.07] p-4">
+      <div className="flex items-start gap-3">
+        <Sparkles className="mt-0.5 size-4 shrink-0 text-ink" />
+        <div>
+          <p className="text-sm font-semibold">Your plan is ready — nothing logged yet.</p>
+          <p className="mt-0.5 text-sm text-ink-soft">
+            Log a glass of water or today&apos;s weight below and these numbers start moving.
+          </p>
+        </div>
       </div>
     </Card>
   );
@@ -587,38 +874,45 @@ export default function DashboardPage() {
 
   return (
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={spring} className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-sm text-ink-soft">
-          <span className="rounded-full bg-ink/5 px-2.5 py-1 font-medium">Plan v{plan.version}</span>
-          {plan.degraded && (
-            <span className="rounded-full bg-amber/20 px-2.5 py-1 font-medium text-amber">fallback</span>
-          )}
-        </div>
-        <Button variant="outline" loading={generate.isPending} onClick={() => generate.mutate()}>
-          <RefreshCw className="size-4" /> Regenerate
-        </Button>
-      </div>
-
-      {summary && <OverviewCards s={summary} />}
-
-      <WeekStrip streak={summary?.streak_days ?? 0} />
-
+      {/* Header and macros read as one unit: who you are, and the split you're
+          aiming at. Side by side on desktop, stacked on a phone. */}
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <TwinHero name={profile.name} goal={profile.goal} calories={plan.calorie_target} />
+          <TwinHeader
+            name={profile.name}
+            goal={profile.goal}
+            calories={plan.calorie_target}
+            version={plan.version}
+            degraded={plan.degraded}
+            onRegenerate={() => generate.mutate()}
+            regenerating={generate.isPending}
+          />
         </div>
-        <Card>
-          <h3 className="font-display text-lg font-bold">Daily macros</h3>
-          <div className="mt-4">
+        <Card className="flex flex-col justify-center">
+          <h3 className="font-display text-base font-bold">Daily macros</h3>
+          <div className="mt-3">
             <MacroSplit macros={plan.macros} />
           </div>
         </Card>
       </div>
 
+      {summary && <FirstRunNudge s={summary} />}
+      {summary && <OverviewCards s={summary} />}
+
+      <WeekStrip streak={summary?.streak_days ?? 0} />
+
+      {/* Logging sits high: someone opening the app wants to DO something. */}
       <div className="grid gap-4 lg:grid-cols-2">
         <TodayCard waterGoalMl={summary?.water_goal_ml} stepGoal={summary?.step_goal} />
-        <MealsCard meals={summary?.today_meals ?? plan.nutrition?.meal_plan ?? []} />
+        <WeightCard goalKg={summary?.target_weight_kg} />
       </div>
+
+      {/* Meals get the full width: portions are listed per item, so a half
+          column would wrap every dish onto three lines. */}
+      <MealsCard
+        meals={summary?.today_meals ?? plan.nutrition?.meal_plan ?? []}
+        canRotate={Boolean(summary?.today_meals?.length)}
+      />
 
       <WorkoutCard workout={plan.workout ?? {}} />
     </motion.div>

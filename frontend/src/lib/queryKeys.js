@@ -7,4 +7,5 @@ export const qk = {
   dashboard: ["dashboard", "summary"],
   todayLog: ["logs", "today"],
   logHistory: ["logs", "history"],
+  weightSeries: ["progress", "weight"],
 };
