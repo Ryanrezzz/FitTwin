@@ -82,3 +82,23 @@ class CoachResponse(BaseModel):
     progress: ProgressResult | None = None
     motivation: MotivationResult | None = None
     safety: SafetyVerdict | None = None
+
+
+class MealSelection(BaseModel):
+    """What the LLM is allowed to decide: WHICH dish fills each slot.
+
+    Ids only — never numbers. Portions and macros are computed by the catalog,
+    so the model cannot restate a calorie figure the food doesn't support.
+    """
+
+    breakfast: str = ""
+    lunch: str = ""
+    snack: str = ""
+    dinner: str = ""
+    rationale: str = ""
+
+
+class AnswerResult(BaseModel):
+    """A direct reply to a free-text question, grounded in the user's numbers."""
+
+    answer: str = ""

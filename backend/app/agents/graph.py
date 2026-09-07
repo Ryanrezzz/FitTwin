@@ -4,6 +4,7 @@
                     ├─ nutrition ──────────────────────────────────┤
                     ├─ workout ────────────────────────────────────┤→ safety → compose → END
                     ├─ motivation ─────────────────────────────────┤
+                    ├─ answer (Q&A) ───────────────────────────────┤
                     └─ safety (direct) ────────────────────────────┘
 
 Safety is unconditional: every plan-producing path flows through it before compose.
@@ -12,6 +13,7 @@ from __future__ import annotations
 
 from langgraph.graph import END, START, StateGraph
 
+from app.agents.answer import answer_agent
 from app.agents.motivation import motivation_agent
 from app.agents.nutrition import nutrition_agent
 from app.agents.orchestrator import (
@@ -30,6 +32,7 @@ def build_graph():
     b = StateGraph(AgentState)
 
     b.add_node("route", orchestrator_route)
+    b.add_node("answer", answer_agent)
     b.add_node("progress", progress_agent)
     b.add_node("nutrition", nutrition_agent)
     b.add_node("workout", workout_agent)
@@ -40,7 +43,7 @@ def build_graph():
     b.add_edge(START, "route")
     b.add_conditional_edges(
         "route", route_selector,
-        ["progress", "nutrition", "workout", "motivation", "safety"],
+        ["progress", "nutrition", "workout", "motivation", "safety", "answer"],
     )
     b.add_conditional_edges(
         "progress", after_progress,
@@ -49,6 +52,7 @@ def build_graph():
     b.add_edge("nutrition", "safety")
     b.add_edge("workout", "safety")
     b.add_edge("motivation", "safety")
+    b.add_edge("answer", "safety")
     b.add_edge("safety", "compose")
     b.add_edge("compose", END)
 

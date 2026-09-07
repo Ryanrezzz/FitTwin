@@ -11,7 +11,10 @@ from app.ai.llm import get_llm
 def workout_agent(state: dict) -> dict:
     p = state["profile"]
     wk = templates.build_workout(
-        p.get("experience", "beginner"), p.get("training_days", 3), p.get("equipment", [])
+        p.get("experience", "beginner"),
+        p.get("training_days", 3),
+        p.get("equipment", []),
+        p.get("age", 30),
     )
 
     notes = list(wk["progression_notes"])
@@ -28,9 +31,12 @@ def workout_agent(state: dict) -> dict:
     )
 
     user = (
-        f"Experience: {p.get('experience')}, {p.get('training_days')} days/week, "
+        f"Age: {p.get('age')}, experience: {p.get('experience')}, "
+        f"{p.get('training_days')} days/week, "
         f"equipment: {p.get('equipment') or 'none (bodyweight)'}. "
-        f"Personalize exercise selection ONLY within available equipment."
+        f"Personalize exercise selection ONLY within available equipment, and make it "
+        f"age-appropriate: a younger trainee can handle explosive/high-intensity work, "
+        f"while a 50+ trainee needs joint-friendly variations, more warm-up and moderate reps."
     )
     result = get_llm().structured(
         system=WORKOUT_SYSTEM, user=user, schema=WorkoutResult, fallback=fallback

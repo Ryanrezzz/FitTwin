@@ -3,8 +3,9 @@ from __future__ import annotations
 
 from app.agents import templates
 from app.agents.prompts import NUTRITION_SYSTEM
-from app.agents.schemas import MacrosOut, Meal, NutritionResult
+from app.agents.schemas import MacrosOut, Meal, MealSelection, NutritionResult
 from app.agents.state import trace
+from app.agents.tools import meal_builder
 from app.agents.tools import nutrition_math as nm
 from app.ai.llm import get_llm
 from app.domain import ActivityLevel, Goal, Sex
@@ -38,7 +39,7 @@ def nutrition_agent(state: dict) -> dict:
 
     meals = templates.build_meal_plan(
         targets["calories"], targets["macros"]["protein_g"],
-        p.get("dietary_prefs", []), p.get("allergies", []),
+        p.get("dietary_prefs", []), p.get("allergies", []), age=p.get("age", 30),
     )
     fallback = NutritionResult(
         calories=targets["calories"],
@@ -51,21 +52,47 @@ def nutrition_agent(state: dict) -> dict:
         ),
     )
 
+    # ── LLM picks WHICH dish; the catalog decides HOW MUCH ───────────────────
+    # The model is handed a pre-filtered menu, so it cannot name a dish that
+    # breaks this user's diet or allergies, and it is never asked for a number.
+    menu = meal_builder.allowed_menu(p.get("dietary_prefs", []), p.get("allergies", []))
+    menu_text = "\n".join(
+        f"{slot}: " + ", ".join(d["id"] for d in dishes) for slot, dishes in menu.items()
+    )
     user = (
-        f"User profile: {p}. Authoritative targets (DO NOT change numbers): {targets}. "
-        f"Dietary preferences: {p.get('dietary_prefs', []) or 'none'}; "
-        f"allergies: {p.get('allergies', []) or 'none'}."
+        f"Profile: age {p.get('age')}, goal {p.get('goal')}, "
+        f"diet {p.get('dietary_prefs') or 'unspecified'}, "
+        f"allergies {p.get('allergies') or 'none'}.\n"
+        f"Daily targets (fixed, not yours to change): {targets['calories']} kcal, "
+        f"{targets['macros']['protein_g']}g protein.\n"
+        f"Choose exactly ONE dish id per slot from this menu. Reply with ids only.\n"
+        f"{menu_text}"
     )
-    result = get_llm().structured(
-        system=NUTRITION_SYSTEM, user=user, schema=NutritionResult, fallback=fallback
+    picks = get_llm().structured(
+        system=NUTRITION_SYSTEM, user=user, schema=MealSelection,
+        fallback=MealSelection(),
     )
-    # numbers are tool-owned; never trust the model's arithmetic
-    result.calories = targets["calories"]
-    result.macros = MacrosOut(**targets["macros"])
-    if not result.changes:
-        result.changes = changes
+    chosen = {s: getattr(picks, s, "") for s in ("breakfast", "lunch", "snack", "dinner")}
+    if any(chosen.values()):
+        meals = templates.build_meal_plan(
+            targets["calories"], targets["macros"]["protein_g"],
+            p.get("dietary_prefs", []), p.get("allergies", []), age=p.get("age", 30),
+            choices=chosen,
+        )
+
+    result = NutritionResult(
+        calories=targets["calories"],
+        macros=MacrosOut(**targets["macros"]),
+        meal_plan=[
+            Meal(**{k: m[k] for k in ("name", "items", "kcal", "protein_g")}) for m in meals
+        ],
+        changes=changes,
+        rationale=picks.rationale or fallback.rationale,
+    )
 
     return {
         "nutrition_result": result.model_dump(),
-        "steps": [trace("nutrition", f"{result.calories} kcal / {result.macros.protein_g}g protein")],
+        "steps": [
+            trace("nutrition", f"{result.calories} kcal / {result.macros.protein_g}g protein")
+        ],
     }

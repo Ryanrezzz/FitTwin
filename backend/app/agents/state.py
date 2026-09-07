@@ -29,6 +29,7 @@ class AgentState(TypedDict, total=False):
     workout_result: dict[str, Any] | None
     motivation_result: dict[str, Any] | None
     safety_verdict: dict[str, Any] | None
+    answer_result: dict[str, Any] | None
 
     # ── bookkeeping ──
     steps: Annotated[list[dict[str, Any]], add]
