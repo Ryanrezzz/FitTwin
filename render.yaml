@@ -1,0 +1,90 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+#
+# Deploys FitTwin as two services from this one repo:
+#   fittwin-api : the FastAPI backend
+#   fittwin-web : the built React SPA, served as static files
+#
+# MongoDB is NOT here: Render has no managed MongoDB, so point MONGO_URI at a
+# MongoDB Atlas cluster (the free M0 tier is enough).
+#
+# After the first deploy you must do two things, because neither URL exists
+# until Render assigns them:
+#   1. Set CORS_ORIGINS on the API to the web service's URL.
+#   2. Set VITE_API_BASE_URL on the web service to the API's URL, then redeploy
+#      it — Vite inlines env vars at BUILD time, so a runtime value does nothing.
+# And add the web URL to your Google OAuth client's authorised origins.
+
+services:
+  # ── API ────────────────────────────────────────────────────────────────────
+  - type: web
+    name: fittwin-api
+    runtime: python
+    rootDir: backend
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    # Render restarts the service if this stops returning 200. It is the one
+    # route that works even when Mongo is unreachable, so a DB blip doesn't
+    # trigger a restart loop.
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.13.5"
+
+      # Turns on the production guard in app/config.py: the app REFUSES to boot
+      # with a default/short JWT_SECRET or wildcard CORS.
+      - key: APP_ENV
+        value: production
+
+      # Render generates a long random value and keeps it stable across deploys.
+      # Do not replace this with a literal — changing it logs every user out.
+      - key: JWT_SECRET
+        generateValue: true
+
+      - key: LLM_PROVIDER
+        value: openai
+      - key: LLM_MODEL
+        value: gpt-5.6-luna
+      # gpt-5.5 / gpt-5.6-* reject any temperature but the default; seed is what
+      # makes repeated runs reproducible. See HANDOFF §3.
+      - key: LLM_SEED
+        value: "42"
+
+      - key: DB_ENABLED
+        value: "true"
+      - key: MONGO_DB
+        value: fittwin
+
+      # sync:false = set by hand in the Render dashboard, never committed.
+      - key: MONGO_URI          # mongodb+srv://... from MongoDB Atlas
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GOOGLE_CLIENT_ID   # public value, but env-set so it can differ per env
+        sync: false
+      - key: CORS_ORIGINS       # https://fittwin-web.onrender.com
+        sync: false
+
+  # ── Web (static SPA) ───────────────────────────────────────────────────────
+  - type: web
+    name: fittwin-web
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_BASE_URL  # https://fittwin-api.onrender.com
+        sync: false
+    routes:
+      # React Router owns the paths. Without this, refreshing /coach or deep-
+      # linking to /login returns Render's 404 instead of the app.
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin

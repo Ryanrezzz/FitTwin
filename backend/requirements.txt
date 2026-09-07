@@ -12,12 +12,17 @@ uvicorn[standard]>=0.29
 # ── Persistence + auth ──
 beanie>=2.0               # async MongoDB ODM (uses pymongo's native async driver)
 email-validator>=2.1      # pydantic EmailStr
+google-auth>=2.30         # verifies Google Sign-In ID tokens
 argon2-cffi>=23.1         # Argon2id password hashing
 PyJWT>=2.8                # access/refresh tokens
 
-# ── LLM provider (active: Gemini) ──
+# ── LLM providers ──
+# Both active providers are installed, because a missing SDK does NOT raise on
+# Render: app/ai/llm.py catches the ImportError and silently falls back to the
+# deterministic "fake" provider. The app would look healthy while serving canned
+# text. Ship the SDK for whichever LLM_PROVIDER you actually run.
 langchain-google-genai>=2.0   # LLM_PROVIDER=gemini
+langchain-openai>=1.6         # LLM_PROVIDER=openai
 
-# Other optional providers — install the one you use (LLM_PROVIDER env):
-#   pip install langchain-openai         # openai
-#   pip install langchain-ollama         # ollama (local / open-source)
+# Optional, install only if used:
+#   pip install langchain-ollama         # LLM_PROVIDER=ollama (local models)
