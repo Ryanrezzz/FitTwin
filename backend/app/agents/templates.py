@@ -6,44 +6,18 @@ personalizes the language/selection on top of these.
 """
 from __future__ import annotations
 
+from app.agents.tools import meal_builder
 from app.domain import Experience
 
 # ──────────────────────────────────────────────────────────────────────────
-# MEALS — India-first staples (see docs/08); rotated per day for variety.
+# MEALS — delegated to the catalog-backed builder.
+#
+# This used to invent numbers: `kcal = daily_target * meal_fraction`, printed
+# beside a dish name nothing had measured. Two different diets produced
+# identical calories, which is the tell. Meals are now composed from
+# `data/foods_in.py` recipes and the kcal/protein are SUMMED from the portions
+# actually listed — see tools/meal_builder.py.
 # ──────────────────────────────────────────────────────────────────────────
-_MEAL_SPLIT = [("Breakfast", 0.28), ("Lunch", 0.34), ("Dinner", 0.30), ("Snack", 0.08)]
-
-_PROTEIN_SOURCES = {
-    "omnivore": [
-        "chicken breast", "eggs", "fish curry", "egg bhurji", "curd (dahi)",
-        "keema", "paneer", "whey shake",
-    ],
-    "vegetarian": [
-        "paneer", "rajma", "chana (chickpeas)", "dal (lentils)", "curd (dahi)",
-        "soy chunks", "besan chilla", "tofu", "whey shake",
-    ],
-    "vegan": [
-        "tofu", "soy chunks", "rajma", "chana (chickpeas)", "dal (lentils)",
-        "peanuts", "sprouts", "pea-protein shake",
-    ],
-}
-# Breakfast carbs differ from main-meal carbs so a rotated day still reads sensibly.
-_BREAKFAST_CARBS = ["oats", "poha", "idli", "dosa", "upma", "banana", "vegetable sandwich"]
-_MAIN_CARBS = ["rice", "whole-wheat roti", "jeera rice", "quinoa", "potatoes", "khichdi"]
-_VEG = ["mixed salad", "palak (spinach)", "bhindi", "mixed sabzi", "cucumber raita"]
-
-
-def _diet_key(dietary_prefs: list[str]) -> str:
-    prefs = {p.lower() for p in dietary_prefs}
-    if "vegan" in prefs:
-        return "vegan"
-    if "vegetarian" in prefs or "veg" in prefs:
-        return "vegetarian"
-    return "omnivore"
-
-
-def _filter(pool: list[str], allergens: set[str]) -> list[str]:
-    return [x for x in pool if not any(a in x.lower() for a in allergens)] or pool
 
 
 def build_meal_plan(
@@ -52,38 +26,28 @@ def build_meal_plan(
     dietary_prefs: list[str],
     allergies: list[str],
     day_offset: int = 0,
+    age: int = 30,
+    choices: dict[str, str] | None = None,
+    rotations: dict[str, int] | None = None,
 ) -> list[dict]:
-    """One day's meals. `day_offset` rotates the food selection so a weekly plan
-    (or "today") varies day-to-day instead of repeating the same foods."""
-    diet = _diet_key(dietary_prefs)
-    allergens = {a.lower() for a in allergies}
-    proteins = _filter(_PROTEIN_SOURCES[diet], allergens)
-    bfast_carbs = _filter(_BREAKFAST_CARBS, allergens)
-    main_carbs = _filter(_MAIN_CARBS, allergens)
-    veg = _filter(_VEG, allergens)
-
-    meals: list[dict] = []
-    for i, (name, frac) in enumerate(_MEAL_SPLIT):
-        rot = i + day_offset                       # shift the rotation each day
-        p_src = proteins[rot % len(proteins)]
-        carb_pool = bfast_carbs if name == "Breakfast" else main_carbs
-        c_src = carb_pool[rot % len(carb_pool)]
-        items = [p_src, c_src]
-        if name in ("Lunch", "Dinner"):
-            items.append(veg[rot % len(veg)])
-        meals.append(
-            {
-                "name": name,
-                "items": items,
-                "kcal": round(calories * frac),
-                "protein_g": round(protein_g * frac),
-            }
-        )
-    return meals
+    """One day's meals with macros computed from the food on the plate."""
+    return meal_builder.build_day(
+        calories=calories,
+        protein_g=protein_g,
+        dietary_prefs=dietary_prefs,
+        allergies=allergies,
+        age=age,
+        day_offset=day_offset,
+        choices=choices,
+        rotations=rotations,
+    )
 
 
 # ──────────────────────────────────────────────────────────────────────────
-# WORKOUTS
+# WORKOUTS — split & exercise selection adapt to EQUIPMENT, EXPERIENCE *and AGE*.
+# A 22-year-old trains explosively near their limit; a 55-year-old gets
+# joint-friendly variations, higher reps and more warm-up. Same math, different
+# movement selection and intensity.
 # ──────────────────────────────────────────────────────────────────────────
 _HOME_SIGNALS = {"none", "no equipment", "bodyweight", "home", "bands", "resistance bands"}
 _FREE_WEIGHTS = {"dumbbell", "dumbbells", "barbell", "gym", "kettlebell", "full gym", "machines"}
@@ -111,6 +75,40 @@ _REP_SCHEME = {
     Experience.advanced: (4, "5-8"),
 }
 
+# 50+ : swap heavy axial-loaded / higher-impact lifts for joint-friendly variants.
+_MASTERS_SWAPS = {
+    "Back Squat": "Goblet Squat",
+    "Deadlift": "Romanian Deadlift",
+    "Bench Press": "DB Bench Press",
+    "Overhead Press": "Seated DB Shoulder Press",
+    "Barbell Row": "Chest-Supported DB Row",
+    "Bulgarian Split Squat": "Reverse Lunge",
+    "Pike Push-ups": "Incline Push-ups",
+    "Chair Dips": "Bench Dips (feet supported)",
+}
+# 50+ : moderate the rep range to protect joints (lighter, more reps).
+_MASTERS_REPS = {"5-8": "8-12", "6-10": "8-12", "8-12": "10-15"}
+
+# Under-30 : append one explosive/athletic finisher per focus (no equipment
+# needed, so it works home or gym) — the "more athletic" training the young
+# user expects and an older user shouldn't be doing.
+_YOUNG_FINISHER = {
+    "full": "Jump Squats",
+    "lower": "Jump Squats",
+    "legs": "Box Jumps",
+    "push": "Plyo Push-ups",
+    "upper": "Plyo Push-ups",
+    "pull": "Burpees",
+}
+
+_AGE_NOTES = {
+    "young": "You recover fast — train close to your limit and add load weekly; "
+             "the explosive finisher builds power and athleticism.",
+    "adult": "Balance intensity with recovery — keep 1–2 reps in reserve on your last set.",
+    "masters": "Joint-friendly variations selected. Warm up 8–10 min, prioritise form over load, "
+               "and leave an extra rest day between hard sessions.",
+}
+
 
 def is_home_setup(equipment: list[str]) -> bool:
     eq = {e.lower() for e in equipment}
@@ -121,6 +119,14 @@ def is_home_setup(equipment: list[str]) -> bool:
     return True  # default to the safer (no-equipment) assumption
 
 
+def _age_band(age: int) -> str:
+    if age < 30:
+        return "young"
+    if age < 50:
+        return "adult"
+    return "masters"
+
+
 def _split_for_days(days: int) -> tuple[str, list[str]]:
     if days <= 3:
         return "Full Body", ["full"] * max(days, 2)
@@ -129,7 +135,9 @@ def _split_for_days(days: int) -> tuple[str, list[str]]:
     return "Push / Pull / Legs", (["push", "pull", "legs"] * 2)[:days]
 
 
-def build_workout(experience: str, training_days: int, equipment: list[str]) -> dict:
+def build_workout(
+    experience: str, training_days: int, equipment: list[str], age: int = 30
+) -> dict:
     try:
         exp = Experience(experience)
     except ValueError:
@@ -137,7 +145,10 @@ def build_workout(experience: str, training_days: int, equipment: list[str]) -> 
     days = max(2, min(int(training_days or 3), 6))
     home = is_home_setup(equipment)
     pool = _HOME_POOL if home else _GYM_POOL
+    band = _age_band(int(age or 30))
     sets, reps = _REP_SCHEME[exp]
+    if band == "masters":
+        sets, reps = max(2, sets - 1), _MASTERS_REPS.get(reps, reps)
     split_name, focuses = _split_for_days(days)
 
     load = (
@@ -147,14 +158,24 @@ def build_workout(experience: str, training_days: int, equipment: list[str]) -> 
     )
     sessions = []
     for i, focus in enumerate(focuses, start=1):
-        exercises = [
-            {"name": ex, "sets": sets, "reps": reps, "load_guidance": load}
-            for ex in pool[focus][:4]
-        ]
+        exercises = []
+        for ex in pool[focus][:4]:
+            if band == "masters":
+                ex = _MASTERS_SWAPS.get(ex, ex)
+            exercises.append({"name": ex, "sets": sets, "reps": reps, "load_guidance": load})
+        if band == "young" and focus in _YOUNG_FINISHER:
+            exercises.append(
+                {
+                    "name": _YOUNG_FINISHER[focus],
+                    "sets": 3,
+                    "reps": "6-8 explosive",
+                    "load_guidance": "Move fast and powerfully; full recovery between sets.",
+                }
+            )
         sessions.append({"day": f"Day {i}", "focus": focus.capitalize(), "exercises": exercises})
 
     return {
-        "split": f"{split_name} ({days} days/week, {'home' if home else 'gym'})",
+        "split": f"{split_name} ({days} days/week, {'home' if home else 'gym'}, age {age})",
         "sessions": sessions,
-        "progression_notes": [load],
+        "progression_notes": [load, _AGE_NOTES[band]],
     }
