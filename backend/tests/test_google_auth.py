@@ -147,3 +147,28 @@ def test_google_endpoint_validates_its_input(client, unconfigured):
     # extra="forbid" — unknown fields are a client bug, not silently ignored
     r = client.post("/api/v1/auth/google", json={"credential": "x" * 32, "role": "admin"})
     assert r.status_code == 422
+
+
+def test_env_values_are_stripped_of_whitespace():
+    """A pasted env var arrives as '...com\\n' and is a DIFFERENT client id to
+    Google, which then reports an unknown client — an error that points nowhere
+    near the real cause. This cost a live debugging session on Render."""
+    import importlib
+    import os
+
+    prev = {k: os.environ.get(k) for k in ("GOOGLE_CLIENT_ID", "CORS_ORIGINS")}
+    os.environ["GOOGLE_CLIENT_ID"] = "abc.apps.googleusercontent.com\n"
+    os.environ["CORS_ORIGINS"] = "  https://example.onrender.com \n"
+    try:
+        import app.config as config_module
+
+        importlib.reload(config_module)
+        assert config_module.settings.google_client_id == "abc.apps.googleusercontent.com"
+        assert config_module.settings.cors_origin_list == ["https://example.onrender.com"]
+    finally:
+        for k, v in prev.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+        importlib.reload(config_module)

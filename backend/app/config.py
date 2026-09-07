@@ -1,7 +1,7 @@
 """Application settings, env-driven (12-factor)."""
 from __future__ import annotations
 
-from pydantic import model_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_JWT_SECRET = "change-me-to-a-long-random-string"
@@ -56,6 +56,19 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     openai_api_key: str = ""
     ollama_base_url: str = "http://localhost:11434"
+
+    # Dashboard/CI env fields routinely pick up a trailing newline from a
+    # paste — a textarea, or `echo` into a secret store. A client id ending in
+    # "\n" is a DIFFERENT string to Google and fails as an unknown client, with
+    # an error that points nowhere near the cause. Strip on the way in.
+    @field_validator(
+        "google_client_id", "openai_api_key", "gemini_api_key",
+        "jwt_secret", "mongo_uri", "cors_origins", "llm_model", "llm_provider",
+        mode="before",
+    )
+    @classmethod
+    def _strip_whitespace(cls, v: object) -> object:
+        return v.strip() if isinstance(v, str) else v
 
     @property
     def cors_origin_list(self) -> list[str]:
