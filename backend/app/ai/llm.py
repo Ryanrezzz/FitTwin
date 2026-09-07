@@ -80,10 +80,13 @@ def _build_gemini() -> LLMProvider:
 def _build_openai() -> LLMProvider:
     from langchain_openai import ChatOpenAI
 
+    # NOTE: newer models (gpt-5.5, gpt-5.6-*) only accept the default temperature;
+    # LangChain drops our value silently, so `seed` is what pins output down.
     model = ChatOpenAI(
         model=settings.llm_model,
         api_key=settings.openai_api_key,
         temperature=settings.llm_temperature,
+        seed=settings.llm_seed,
     )
     return _LangChainProvider(model, "openai")
 

@@ -16,11 +16,23 @@ from app.deps import (
     get_coach_service,
     get_current_profile,
     get_current_user,
+    get_log_repo,
     get_plan_repo,
+    get_progress_repo,
 )
 from app.models.user import User
+from app.repositories.log_repo import LogRepo
 from app.repositories.plan_repo import PlanRepo
-from app.schemas.coach import ChatRequest, CoachResponseOut, PlanOut, WeeklyReviewRequest
+from app.repositories.progress_repo import ProgressRepo
+from app.schemas.coach import (
+    ChatRequest,
+    CoachResponseOut,
+    HistoryIn,
+    LogEntry,
+    PlanOut,
+    WeeklyReviewRequest,
+    WeightEntry,
+)
 from app.services.coach_service import CoachService
 
 router = APIRouter(tags=["coach"], dependencies=[Depends(ensure_persistence)])
@@ -51,6 +63,34 @@ async def generate_plan(
     return await service.generate_plan(profile=profile, user_id=str(user.id))
 
 
+async def _stored_history(user_id: str, progress: ProgressRepo, logs: LogRepo) -> HistoryIn:
+    """Rebuild the review window from what the server already knows.
+
+    The client has no reliable copy of the user's weigh-ins or daily logs, so
+    asking it to supply them made plateau detection depend on data the caller
+    couldn't produce. Read them from the repositories instead.
+    """
+    entries = await progress.recent(user_id, limit=60)
+    recent_logs = await logs.recent(user_id, limit=60)
+    return HistoryIn(
+        # Oldest-first: the trend tools fit a slope over the series in order.
+        weight_series=[
+            WeightEntry(date=e.date.isoformat(), weight_kg=e.weight_kg)
+            for e in reversed(entries)
+        ],
+        logs=[
+            LogEntry(
+                calories=int(log.calories or 0),
+                # DailyLog stores protein as a float; the review DTO wants an int.
+                protein_g=int(round(log.protein_g or 0)),
+                steps=log.steps,
+                workout_done=log.workout_done,
+            )
+            for log in reversed(recent_logs)
+        ],
+    )
+
+
 @router.post("/plans/weekly-review", response_model=CoachResponseOut)
 async def weekly_review(
     req: WeeklyReviewRequest,
@@ -58,8 +98,18 @@ async def weekly_review(
     profile: dict[str, Any] = Depends(get_current_profile),
     active_plan: dict[str, Any] | None = Depends(get_active_plan),
     service: CoachService = Depends(get_coach_service),
+    progress: ProgressRepo = Depends(get_progress_repo),
+    logs: LogRepo = Depends(get_log_repo),
 ) -> CoachResponseOut:
-    """Analyze logged data against the active plan; re-plan on a plateau, else motivate."""
+    """Analyze logged data against the active plan; re-plan on a plateau, else motivate.
+
+    History comes from stored weigh-ins and logs; an explicit body still wins so
+    a caller can review a hypothetical series.
+    """
+    if not req.history.weight_series and not req.history.logs:
+        req = req.model_copy(
+            update={"history": await _stored_history(str(user.id), progress, logs)}
+        )
     return await service.weekly_review(
         req, profile=profile, active_plan=active_plan, user_id=str(user.id)
     )

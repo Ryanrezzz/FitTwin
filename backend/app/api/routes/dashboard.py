@@ -21,9 +21,13 @@ from app.deps import (
     get_current_profile,
     get_current_user,
     get_log_repo,
+    get_progress_repo,
+    get_rotation_repo,
 )
 from app.models.user import User
 from app.repositories.log_repo import LogRepo
+from app.repositories.progress_repo import ProgressRepo
+from app.repositories.rotation_repo import RotationRepo
 from app.schemas.dashboard import AgentInfo, DashboardSummaryOut
 
 router = APIRouter(
@@ -69,10 +73,18 @@ async def summary(
     profile: dict[str, Any] = Depends(get_current_profile),
     active_plan: dict[str, Any] | None = Depends(get_active_plan),
     logs: LogRepo = Depends(get_log_repo),
+    progress: ProgressRepo = Depends(get_progress_repo),
+    rotations: RotationRepo = Depends(get_rotation_repo),
 ) -> DashboardSummaryOut:
     """Overview cards (current/target weight, calories & protein remaining, water,
     steps, workout %, streak, est. weeks-to-goal) + the hybrid agent map."""
     today = await _today_from_logs(str(user.id), logs)
+    # `profile.weight_kg` is the onboarding number and never changes. Prefer the
+    # most recent weigh-in so the weight card, BMR-derived targets and the
+    # weeks-to-goal estimate all track reality instead of a frozen value.
+    latest = await progress.latest(str(user.id))
+    if latest is not None:
+        profile = {**profile, "weight_kg": latest.weight_kg}
     metrics = dashboard_math.dashboard_summary(profile, active_plan, today)
     # Today's meal suggestion — rotated by weekday so it varies day-to-day, while
     # still hitting the same calorie/protein targets and honoring diet/allergies.
@@ -82,6 +94,10 @@ async def summary(
         profile.get("dietary_prefs", []),
         profile.get("allergies", []),
         day_offset=date.today().weekday(),
+        age=profile.get("age", 30),
+        # Honour any slot the user rotated today, or the swap would silently
+        # revert on the next refresh.
+        rotations=await rotations.get(str(user.id), date.today()),
     )
     return DashboardSummaryOut(
         **metrics,

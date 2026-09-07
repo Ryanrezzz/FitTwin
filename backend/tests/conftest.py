@@ -9,6 +9,9 @@ import os
 
 os.environ.setdefault("LLM_PROVIDER", "fake")
 os.environ["DB_ENABLED"] = "false"
+# The suite logs in far more often than a human would; the limiter has its own
+# dedicated test (test_ratelimit.py) that switches it back on.
+os.environ["RATE_LIMIT_ENABLED"] = "false"
 
 from datetime import UTC, datetime  # noqa: E402
 from enum import Enum  # noqa: E402
@@ -40,13 +43,36 @@ def _agent_shape(data: dict[str, Any]) -> dict[str, Any]:
 
 
 class _FakeUser:
-    def __init__(self, email: str, password_hash: str, role: Role) -> None:
+    def __init__(
+        self,
+        email: str,
+        password_hash: str | None,
+        role: Role,
+        *,
+        google_sub: str | None = None,
+        email_verified: bool = False,
+        display_name: str = "",
+        avatar_url: str = "",
+    ) -> None:
         self.id = PydanticObjectId()
         self.email = email
         self.password_hash = password_hash
         self.role = role
         self.is_active = True
         self.created_at = datetime.now(UTC)
+        self.google_sub = google_sub
+        self.email_verified = email_verified
+        self.display_name = display_name
+        self.avatar_url = avatar_url
+
+    @property
+    def providers(self) -> list[str]:
+        out = []
+        if self.password_hash:
+            out.append("password")
+        if self.google_sub:
+            out.append("google")
+        return out
 
 
 class _FakeProfile:
@@ -73,10 +99,34 @@ class InMemoryUserRepo:
     async def get_by_email(self, email: str):
         return self._by_email.get(email)
 
-    async def create(self, *, email: str, password_hash: str, role: Role = Role.user):
-        user = _FakeUser(email, password_hash, role)
+    async def get_by_google_sub(self, google_sub: str):
+        return next(
+            (u for u in self._by_id.values() if u.google_sub == google_sub), None
+        )
+
+    async def create(
+        self,
+        *,
+        email: str,
+        password_hash: str | None = None,
+        role: Role = Role.user,
+        google_sub: str | None = None,
+        email_verified: bool = False,
+        display_name: str = "",
+        avatar_url: str = "",
+    ):
+        user = _FakeUser(
+            email, password_hash, role,
+            google_sub=google_sub, email_verified=email_verified,
+            display_name=display_name, avatar_url=avatar_url,
+        )
         self._by_id[str(user.id)] = user
         self._by_email[email] = user
+        return user
+
+    async def save(self, user):
+        self._by_id[str(user.id)] = user
+        self._by_email[user.email] = user
         return user
 
 
@@ -173,14 +223,65 @@ class InMemoryLogRepo:
         return sorted(days.values(), key=lambda log: log.date, reverse=True)[:limit]
 
 
+class _FakeWeighIn:
+    def __init__(self, day, weight_kg: float, note: str = "") -> None:
+        self.date, self.weight_kg, self.note = day, weight_kg, note
+
+    def to_api(self) -> dict[str, Any]:
+        return {
+            "date": self.date.isoformat(),
+            "weight_kg": round(self.weight_kg, 2),
+            "note": self.note,
+        }
+
+
+class InMemoryProgressRepo:
+    def __init__(self) -> None:
+        self._by_user: dict[str, dict[Any, _FakeWeighIn]] = {}
+
+    async def upsert(self, user_id: str, day, weight_kg: float, note: str = ""):
+        days = self._by_user.setdefault(user_id, {})
+        days[day] = _FakeWeighIn(day, weight_kg, note)
+        return days[day]
+
+    async def recent(self, user_id: str, limit: int = 60):
+        days = self._by_user.get(user_id, {})
+        return sorted(days.values(), key=lambda e: e.date, reverse=True)[:limit]
+
+    async def latest(self, user_id: str):
+        entries = await self.recent(user_id, limit=1)
+        return entries[0] if entries else None
+
+
+class InMemoryRotationRepo:
+    def __init__(self) -> None:
+        self._by_user: dict[str, dict[Any, dict[str, int]]] = {}
+
+    async def get(self, user_id: str, day) -> dict[str, int]:
+        return dict(self._by_user.get(user_id, {}).get(day, {}))
+
+    async def bump(self, user_id: str, day, slot: str, by: int = 1) -> dict[str, int]:
+        days = self._by_user.setdefault(user_id, {})
+        current = days.setdefault(day, {})
+        current[slot] = current.get(slot, 0) + by
+        return dict(current)
+
+    async def reset(self, user_id: str, day) -> dict[str, int]:
+        self._by_user.setdefault(user_id, {})[day] = {}
+        return {}
+
+
 @pytest.fixture()
 def client():
     users, profiles, plans = InMemoryUserRepo(), InMemoryProfileRepo(), InMemoryPlanRepo()
-    logs = InMemoryLogRepo()
+    logs, progress = InMemoryLogRepo(), InMemoryProgressRepo()
+    rotations = InMemoryRotationRepo()
     app.dependency_overrides[deps.get_user_repo] = lambda: users
     app.dependency_overrides[deps.get_profile_repo] = lambda: profiles
     app.dependency_overrides[deps.get_plan_repo] = lambda: plans
     app.dependency_overrides[deps.get_log_repo] = lambda: logs
+    app.dependency_overrides[deps.get_progress_repo] = lambda: progress
+    app.dependency_overrides[deps.get_rotation_repo] = lambda: rotations
     with TestClient(app) as c:   # context-managed -> runs lifespan (compiles graph)
         yield c
     app.dependency_overrides.clear()

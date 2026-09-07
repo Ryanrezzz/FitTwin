@@ -12,10 +12,18 @@ class AgentInfo(BaseModel):
 
 
 class MealOut(BaseModel):
+    """A meal on the dashboard. `slot` and `dish_id` are what the UI needs to
+    offer a Rotate button and label what it swapped."""
+
     name: str
     items: list[str]
     kcal: int
     protein_g: int
+    slot: str = ""
+    dish: str = ""
+    dish_id: str = ""
+    carbs_g: int = 0
+    fat_g: int = 0
 
 
 class DashboardSummaryOut(BaseModel):

@@ -3,7 +3,16 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.api.routes import auth, coach, dashboard, health, logs, profile
+from app.api.routes import (
+    auth,
+    coach,
+    dashboard,
+    health,
+    logs,
+    meals,
+    profile,
+    progress,
+)
 
 api_v1 = APIRouter()
 api_v1.include_router(health.router)
@@ -12,3 +21,5 @@ api_v1.include_router(profile.router)
 api_v1.include_router(coach.router)
 api_v1.include_router(dashboard.router)
 api_v1.include_router(logs.router)
+api_v1.include_router(progress.router)
+api_v1.include_router(meals.router)

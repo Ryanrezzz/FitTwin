@@ -19,6 +19,8 @@ from app.models.user import Role, User
 from app.repositories.log_repo import BeanieLogRepo, LogRepo
 from app.repositories.plan_repo import BeaniePlanRepo, PlanRepo
 from app.repositories.profile_repo import BeanieProfileRepo, ProfileRepo
+from app.repositories.progress_repo import BeanieProgressRepo, ProgressRepo
+from app.repositories.rotation_repo import BeanieRotationRepo, RotationRepo
 from app.repositories.user_repo import BeanieUserRepo, UserRepo
 from app.services.auth_service import AuthService
 from app.services.coach_service import CoachService
@@ -66,6 +68,14 @@ def get_plan_repo() -> PlanRepo:
 
 def get_log_repo() -> LogRepo:
     return BeanieLogRepo()
+
+
+def get_progress_repo() -> ProgressRepo:
+    return BeanieProgressRepo()
+
+
+def get_rotation_repo() -> RotationRepo:
+    return BeanieRotationRepo()
 
 
 # ── services ──────────────────────────────────────────────────────────────────
