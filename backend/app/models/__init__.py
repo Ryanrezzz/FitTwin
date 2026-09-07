@@ -2,10 +2,15 @@
 from __future__ import annotations
 
 from app.models.log import DailyLog
+from app.models.meal_rotation import MealRotation
 from app.models.plan import Plan
 from app.models.profile import Profile
+from app.models.progress import ProgressEntry
 from app.models.user import Role, User
 
-ALL_MODELS = [User, Profile, Plan, DailyLog]
+ALL_MODELS = [User, Profile, Plan, DailyLog, ProgressEntry, MealRotation]
 
-__all__ = ["ALL_MODELS", "DailyLog", "Plan", "Profile", "Role", "User"]
+__all__ = [
+    "ALL_MODELS", "DailyLog", "MealRotation", "Plan", "Profile",
+    "ProgressEntry", "Role", "User",
+]

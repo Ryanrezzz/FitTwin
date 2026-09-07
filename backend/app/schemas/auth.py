@@ -20,6 +20,14 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=1, max_length=128)
 
 
+class GoogleSignInRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # The ID token from Google Identity Services. Verified server-side; the
+    # client's claims about who they are are never trusted.
+    credential: str = Field(min_length=16, max_length=8192)
+
+
 class RefreshRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -45,3 +53,15 @@ class UserOut(BaseModel):
     role: str
     is_active: bool
     created_at: datetime
+    display_name: str = ""
+    avatar_url: str = ""
+    # Which sign-in methods work for this account, so the UI can say
+    # "you signed in with Google" instead of offering a password reset.
+    providers: list[str] = []
+
+
+class GoogleConfigOut(BaseModel):
+    """Lets the SPA decide whether to render the Google button at all."""
+
+    enabled: bool
+    client_id: str = ""

@@ -24,13 +24,57 @@ class Role(str, Enum):
     admin = "admin"
 
 
+class AuthProvider(str, Enum):
+    password = "password"
+    google = "google"
+
+
 class User(Document):
     email: EmailStr
-    password_hash: str
+
+    # None for accounts that only ever signed in with Google. Password login MUST
+    # reject these rather than treating "no hash" as "no password required" —
+    # see AuthService.authenticate.
+    password_hash: str | None = None
+
+    # Google's `sub`: stable, immutable, and the correct join key. Email is not —
+    # a Google account can change its address, and matching on email alone is how
+    # account-takeover bugs happen.
+    google_sub: str | None = None
+
+    # True only when the identity provider asserted it. Gates account linking.
+    email_verified: bool = False
+
+    display_name: str = ""
+    avatar_url: str = ""
+
     role: Role = Role.user
     is_active: bool = True
     created_at: datetime = Field(default_factory=_utcnow)
 
+    @property
+    def providers(self) -> list[str]:
+        """Which sign-in methods this account can currently use."""
+        out = []
+        if self.password_hash:
+            out.append(AuthProvider.password.value)
+        if self.google_sub:
+            out.append(AuthProvider.google.value)
+        return out
+
     class Settings:
         name = "users"
-        indexes = [IndexModel([("email", 1)], unique=True, name="uq_user_email")]
+        indexes = [
+            IndexModel([("email", 1)], unique=True, name="uq_user_email"),
+            # PARTIAL, not sparse. Beanie serialises `google_sub: None` as an
+            # explicit null rather than omitting the field, and a sparse index
+            # only skips *missing* fields — so every password-only user would
+            # collide on null under `unique + sparse`. Filtering on $type:
+            # "string" indexes exactly the accounts that really have a Google id.
+            IndexModel(
+                [("google_sub", 1)],
+                unique=True,
+                name="uq_user_google_sub",
+                partialFilterExpression={"google_sub": {"$type": "string"}},
+            ),
+        ]

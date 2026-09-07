@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { Dumbbell } from "lucide-react";
 import { Button, Card, Field, Input } from "../../components/ui.jsx";
 import { login, register } from "./auth.api";
+import GoogleButton from "./GoogleButton.jsx";
 
 export default function AuthPage() {
   const navigate = useNavigate();
@@ -77,7 +78,14 @@ export default function AuthPage() {
             </Button>
           </form>
 
-          <p className="mt-4 text-center text-sm text-ink-soft">
+          {/* Renders nothing when the server has no GOOGLE_CLIENT_ID, so a
+              password-only deployment shows no dead button. */}
+          <GoogleButton
+            onSuccess={() => navigate("/", { replace: true })}
+            onError={setError}
+          />
+
+          <p className="mt-6 text-center text-sm text-ink-soft">
             {isRegister ? "Already have an account?" : "New to FitTwin?"}{" "}
             <button
               type="button"
